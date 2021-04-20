@@ -1,17 +1,15 @@
 Zbiór laptops.csv zawiera następujące zmienne:  
 • inches – rozmiar przekątnej w calach  
 • weight – waga laptopa  
-• price_euros – cena laptopa w euro  
+• price\_euros – cena laptopa w euro  
 • company – producent laptopa (1 – Acer, 2 – Asus, 3 – Dell, 4 – HP, 5 –
 Lenovo, 6 – MSI, 7 – Toshiba)  
 • typename – typ laptopa (1 – 2w1, 2 – gaming, 3 – netbook, 4 –
 notebook, 5 – ultrabook, 6 – stacja robocza)  
 • ram – ilość RAM laptopa (1 – 4GB, 2 – 8GB, 3 – 16GB, 4 – 32GB)  
 
-``` r
-dataSet <- read.csv(file = "laptops.csv", sep = ";", header = TRUE)
-str(dataSet)
-```
+    dataSet <- read.csv(file = "laptops.csv", sep = ";", header = TRUE)
+    str(dataSet)
 
     ## 'data.frame':    1142 obs. of  6 variables:
     ##  $ inches     : num  15.6 15.6 14 14 15.6 ...
@@ -21,9 +19,7 @@ str(dataSet)
     ##  $ typename   : int  4 4 5 5 4 4 4 4 4 5 ...
     ##  $ ram        : int  2 1 3 2 1 1 1 2 2 2 ...
 
-``` r
-summary(dataSet)
-```
+    summary(dataSet)
 
     ##      inches          weight       price_euros        company    
     ##  Min.   :10.10   Min.   :0.690   Min.   : 209.0   Min.   :1.00  
@@ -58,14 +54,12 @@ jest **zależna** od jego producenta.
 Założenie - poziomy (kategorie) dla zmiennych są rozłączne/wzajemnie się
 wykluczają - jest spełnione.
 
-``` r
-alpha <- 0.05 #5% level of significance
+    alpha <- 0.05 #5% level of significance
 
-memory <- dataSet$ram
-company <- dataSet$company
-TAB <- table(company, memory)
-TAB
-```
+    memory <- dataSet$ram
+    company <- dataSet$company
+    TAB <- table(company, memory)
+    TAB
 
     ##        memory
     ## company   1   2   3   4
@@ -77,57 +71,49 @@ TAB
     ##       6   0  22  31   1
     ##       7  14  25   8   1
 
-``` r
-alpha <- 0.1
+    alpha <- 0.1
 
-total <- sum(TAB)
-sumRows <- margin.table(TAB, 1) #rows
-sumCols <- margin.table(TAB,2) #columns
+    total <- sum(TAB)
+    sumRows <- margin.table(TAB, 1) #rows
+    sumCols <- margin.table(TAB,2) #columns
 
-sumRows <- as.vector(sumRows)
-sumCols <- as.vector(sumCols)
+    sumRows <- as.vector(sumRows)
+    sumCols <- as.vector(sumCols)
 
-#expected observations
-exp <- matrix(rep(0, 4*7), nrow=7, ncol=4)
-exp[] <- 0L
-for(i in 1:7) {
-    exp[i, ] <- sumRows[i]*sumCols/total
-}
+    #expected observations
+    exp <- matrix(rep(0, 4*7), nrow=7, ncol=4)
+    exp[] <- 0L
+    for(i in 1:7) {
+        exp[i, ] <- sumRows[i]*sumCols/total
+    }
 
-Tab <- data.frame(TAB)
-obs <- matrix(Tab[["Freq"]], nrow = 7, ncol = 4)
+    Tab <- data.frame(TAB)
+    obs <- matrix(Tab[["Freq"]], nrow = 7, ncol = 4)
 
-chi_sq <- sum((obs-exp)^2/exp) #test statistic
-df <- (nrow(obs)-1)*(ncol(obs)-1) #deg of freedom
-pval <- pchisq(chi_sq, df, lower.tail=FALSE)  #right-tailed 
+    chi_sq <- sum((obs-exp)^2/exp) #test statistic
+    df <- (nrow(obs)-1)*(ncol(obs)-1) #deg of freedom
+    pval <- pchisq(chi_sq, df, lower.tail=FALSE)  #right-tailed 
 
-quantile <- qchisq(alpha, df, lower.tail = FALSE) #quantile of chi-square distribution
+    quantile <- qchisq(alpha, df, lower.tail = FALSE) #quantile of chi-square distribution
 
-if(alpha > pval) {
-  print("H0 rejected.")
-}else {
-  print("There is not enough evidence to suggest an association between RAM and company")
-}
-```
+    if(alpha > pval) {
+      print("H0 rejected.")
+    }else {
+      print("There is not enough evidence to suggest an association between RAM and company")
+    }
 
     ## [1] "H0 rejected."
 
-``` r
-sprintf("test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", chi_sq, pval, quantile)
-```
+    sprintf("test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", chi_sq, pval, quantile)
 
     ## [1] "test statistic = 164.234074 , p-value = 0.000000, confidece interval = [-infinity, 25.989423]"
 
-``` r
-#chisq.test()
-test <- chisq.test(TAB)
-```
+    #chisq.test()
+    test <- chisq.test(TAB)
 
     ## Warning in chisq.test(TAB): Chi-squared approximation may be incorrect
 
-``` r
-test
-```
+    test
 
     ## 
     ##  Pearson's Chi-squared test
@@ -135,26 +121,24 @@ test
     ## data:  TAB
     ## X-squared = 164.23, df = 18, p-value < 2.2e-16
 
-``` r
-x <- seq(0, 175, by = 0.1)
-chi_dense <- dchisq(x, df)
+    x <- seq(0, 175, by = 0.1)
+    chi_dense <- dchisq(x, df)
 
-plot(x, chi_dense,type='l', xlab="x value",
-  ylab="Density", main="Chi-square density")
+    plot(x, chi_dense,type='l', xlab="x value",
+      ylab="Density", main="Chi-square density")
 
-i <- x >= quantile
-lines(x, chi_dense)
-polygon(c(quantile,x[i],175), c(0,chi_dense[i],0), col="blue")
+    i <- x >= quantile
+    lines(x, chi_dense)
+    polygon(c(quantile,x[i],175), c(0,chi_dense[i],0), col="blue")
 
-area <- pchisq(quantile, df, lower.tail = TRUE)
-result <- paste("quantile =",
-   signif(area, digits=3))
-mtext(result,3)
-abline(v=chi_sq, col="red")
-abline(v=quantile, col="blue")
-```
+    area <- pchisq(quantile, df, lower.tail = TRUE)
+    result <- paste("quantile =",
+       signif(area, digits=3))
+    mtext(result,3)
+    abline(v=chi_sq, col="red")
+    abline(v=quantile, col="blue")
 
-![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_github/unnamed-chunk-2-1.png)
+![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_strict/unnamed-chunk-2-1.png)
 Wychodzi, że **ilość pamięci RAM zależy od producenta** (wartość
 statystyki testowej wpada do obszaru krytycznego oraz p-value jest
 mniejsze niż nasz ustalony poziom istotności).
@@ -167,96 +151,90 @@ Test jak wyżej.
 Hipoteza zerowa *H*<sub>0</sub>: Różne rozkłady.  
 Hipoteza alternatywna *H*<sub>1</sub>: Takie same rozkłady.  
 
-``` r
-alpha <- 0.05
-TAB <- TAB[4:5, 1:4]
+    alpha <- 0.05
+    dataSet <- dataSet[dataSet["typename"]==4, ]
 
-total <- sum(TAB)
-sumRows <- margin.table(TAB, 1) #rows
-sumCols <- margin.table(TAB,2) #columns
+    memory <- dataSet$ram
+    company <- dataSet$company
+    TAB <- table(company, memory)
+    TAB <- TAB[4:5, 1:4]
 
-sumRows <- as.vector(sumRows)
-sumCols <- as.vector(sumCols)
+    total <- sum(TAB)
+    sumRows <- margin.table(TAB, 1) #rows
+    sumCols <- margin.table(TAB,2) #columns
 
-#expected observations
-exp <- matrix(rep(0, 4*7), nrow=2, ncol=4)
-exp[] <- 0L
-for(i in 1:2) {
-    exp[i, ] <- sumRows[i]*sumCols/total
-}
+    sumRows <- as.vector(sumRows)
+    sumCols <- as.vector(sumCols)
 
-Tab <- data.frame(TAB)
-obs <- matrix(Tab[["Freq"]], nrow = 2, ncol = 4)
+    #expected observations
+    exp <- matrix(rep(0, 4*7), nrow=2, ncol=4)
+    exp[] <- 0L
+    for(i in 1:2) {
+        exp[i, ] <- sumRows[i]*sumCols/total
+    }
 
-chi_sq <- sum((obs-exp)^2/exp) #test statistic
-df <- (nrow(obs)-1)*(ncol(obs)-1) #deg of freedom
-pval <- pchisq(chi_sq, df, lower.tail=FALSE)  #right-tailed
+    Tab <- data.frame(TAB)
+    obs <- matrix(Tab[["Freq"]], nrow = 2, ncol = 4)
 
-quantile <- qchisq(alpha, df, lower.tail = FALSE) #quantile of chi-square distribution
+    chi_sq <- sum((obs-exp)^2/exp) #test statistic
+    df <- (nrow(obs)-1)*(ncol(obs)-1) #deg of freedom
+    pval <- pchisq(chi_sq, df, lower.tail=FALSE)  #right-tailed
 
-if(alpha > pval) {
-  print("H0 rejected.")
-}else {
-  print("There is not enough evidence to suggest an association between RAM and company")
-}
-```
+    quantile <- qchisq(alpha, df, lower.tail = FALSE) #quantile of chi-square distribution
 
-    ## [1] "H0 rejected."
+    if(alpha > pval) {
+      print("H0 rejected.")
+    }else {
+      print("There is not enough evidence to suggest an association between RAM and company")
+    }
 
-``` r
-sprintf("test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", chi_sq, pval, quantile)
-```
+    ## [1] "There is not enough evidence to suggest an association between RAM and company"
 
-    ## [1] "test statistic = 14.638988 , p-value = 0.002153, confidece interval = [-infinity, 7.814728]"
+    sprintf("test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", chi_sq, pval, quantile)
 
-``` r
-#chisq.test()
-test <- chisq.test(TAB)
-```
+    ## [1] "test statistic = 1.538174 , p-value = 0.673488, confidece interval = [-infinity, 7.814728]"
+
+    #chisq.test()
+    test <- chisq.test(TAB)
 
     ## Warning in chisq.test(TAB): Chi-squared approximation may be incorrect
 
-``` r
-test
-```
+    test
 
     ## 
     ##  Pearson's Chi-squared test
     ## 
     ## data:  TAB
-    ## X-squared = 14.639, df = 3, p-value = 0.002153
+    ## X-squared = 1.5382, df = 3, p-value = 0.6735
 
-``` r
-x <- seq(0, 20, by = 0.1)
-chi_dense <- dchisq(x, df)
+    x <- seq(0, 20, by = 0.1)
+    chi_dense <- dchisq(x, df)
 
-plot(x, chi_dense,type='l', xlab="x value",
-  ylab="Density", main="Chi-square density")
+    plot(x, chi_dense,type='l', xlab="x value",
+      ylab="Density", main="Chi-square density")
 
-i <- x >= quantile
-lines(x, chi_dense)
-polygon(c(quantile,x[i],20), c(0,chi_dense[i],0), col="blue")
+    i <- x >= quantile
+    lines(x, chi_dense)
+    polygon(c(quantile,x[i],20), c(0,chi_dense[i],0), col="blue")
 
-area <- pchisq(quantile, df, lower.tail = TRUE)
-result <- paste("quantile =",
-   signif(area, digits=3))
-mtext(result,3)
-abline(v=chi_sq, col="red")
-abline(v=quantile, col="blue")
-```
+    area <- pchisq(quantile, df, lower.tail = TRUE)
+    result <- paste("quantile =",
+       signif(area, digits=3))
+    mtext(result,3)
+    abline(v=chi_sq, col="red")
+    abline(v=quantile, col="blue")
 
-![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_github/unnamed-chunk-3-1.png)
-**Odrzucamy hipotezę zerową** ponieważ wartość testu wpada do obszaru
-krytycznego / p-value jest mniejsze niż ustalony poziom
-istotności. **Rozkład stosowanych pamięci RAM w notebookach HP i Lenovo
-jest taki sam.**  
+![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_strict/unnamed-chunk-3-1.png)
+**Nie możemy odrzucić hipotezy zerowej** ponieważ wartość testu nie
+wpada do obszaru krytycznego / p-value jest większe niż ustalony poziom
+istotności.
 
 **c)** Średnia zlogarytmowana cena notebooka Dell i HP jest równa.  
 
 **Independent two-sample t-test** wykorzystujemy, gdy chcemy porównać
 dwie grupy pod względem jakiejś zmiennej ilościowej.  
 
-$t = \\frac{\\overline{X}-\\overline{Y}}{\\sqrt{\\frac{s_X^2}{n_X}+\\frac{s_Y^2}{n_Y}}}$,
+$t = \\frac{\\overline{X}-\\overline{Y}}{\\sqrt{\\frac{s\_X^2}{n\_X}+\\frac{s\_Y^2}{n\_Y}}}$,
 gdzie $\\overline{X}$, $\\overline{Y}$ - średnie arytmetyczne,
 *s*<sub>*X*</sub><sup>2</sup>, *s*<sub>*Y*</sub><sup>2</sup> -
 nieobciążone estymatory wariancji, *n*<sub>*X*</sub>, *n*<sub>*Y*</sub>
@@ -270,116 +248,106 @@ notebooków różnią się.
 Jedyne założenie do sprawdzenia: czy próby pochodzą z rozkładu
 normalnego.
 
-``` r
-alpha <- 0.1
+    alpha <- 0.1
 
-dellPrices <- dataSet[dataSet$company=="3", "price_euros"]
-hpPrices <- dataSet[dataSet$company=="4", "price_euros"]
+    dellPrices <- dataSet[dataSet$company=="3", "price_euros"]
+    hpPrices <- dataSet[dataSet$company=="4", "price_euros"]
 
-logDellPrices <- log2(dellPrices)
-logHpPrices <- log2(hpPrices)
+    logDellPrices <- log2(dellPrices)
+    logHpPrices <- log2(hpPrices)
 
-n <- length(dellPrices)
-m <- length(hpPrices)
+    n <- length(dellPrices)
+    m <- length(hpPrices)
 
-qqnorm(logDellPrices)
-qqline(logDellPrices)
-```
+    qqnorm(logDellPrices)
+    qqline(logDellPrices)
 
-![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_github/Założenia-1.png)
+![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_strict/Założenia-1.png)
 
-``` r
-qqnorm(logHpPrices)
-qqline(logHpPrices)
-```
+    qqnorm(logHpPrices)
+    qqline(logHpPrices)
 
-![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_github/Założenia-2.png)
+![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_strict/Założenia-2.png)
 
 Linia prosta na wykresach QQ mówi nam, że nasze próby pochodzą z
 rozkładu normalnego.
 
-``` r
-alpha <- 0.1
+    alpha <- 0.05
 
-dellPrices <- dataSet[dataSet$company=="3", "price_euros"]
-hpPrices <- dataSet[dataSet$company=="4", "price_euros"]
+    dellPrices <- dataSet[dataSet$company=="3", "price_euros"]
+    hpPrices <- dataSet[dataSet$company=="4", "price_euros"]
 
-logDellPrices <- log2(dellPrices)
-logHpPrices <- log2(hpPrices)
+    logDellPrices <- log2(dellPrices)
+    logHpPrices <- log2(hpPrices)
 
-n <- length(dellPrices)
-m <- length(hpPrices)
+    n <- length(dellPrices)
+    m <- length(hpPrices)
 
-#unbiased variance estimators
-unbiased_estX <- 1/(n-1)*sum((logDellPrices-mean(logDellPrices))^2)
-unbiased_estY <- 1/(m-1)*sum((logHpPrices-mean(logHpPrices))^2)
+    #unbiased variance estimators
+    unbiased_estX <- 1/(n-1)*sum((logDellPrices-mean(logDellPrices))^2)
+    unbiased_estY <- 1/(m-1)*sum((logHpPrices-mean(logHpPrices))^2)
 
-a <- unbiased_estX/n + unbiased_estY/m
-t <- (mean(logDellPrices) - mean(logHpPrices))/sqrt(a) #test statistic
+    a <- unbiased_estX/n + unbiased_estY/m
+    t <- (mean(logDellPrices) - mean(logHpPrices))/sqrt(a) #test statistic
 
-df <- a^2/(1/(n-1)*(unbiased_estX/n)^2+1/(m-1)*(unbiased_estY/m)^2) #deg of freedom
+    df <- a^2/(1/(n-1)*(unbiased_estX/n)^2+1/(m-1)*(unbiased_estY/m)^2) #deg of freedom
 
-#two-tailed hypothesis
-pval <- 2*pt(t, n+m-2, lower.tail = FALSE)
+    #two-tailed hypothesis
+    pval <- 2*pt(t, n+m-2, lower.tail = FALSE)
 
-#confidence interval
-lowerBound <- qt(alpha, n+m-2)
-upperBound <- qt(1-alpha, n+m-2)
+    #confidence interval
+    lowerBound <- qt(alpha, n+m-2)
+    upperBound <- qt(1-alpha, n+m-2)
 
-if(alpha > pval) {
-  print("H0 rejected.")
-}else {
-  print("There is not enough evidence to reject H_0")
-}
-```
+    if(alpha > pval) {
+      print("H0 rejected.")
+    }else {
+      print("There is not enough evidence to reject H_0")
+    }
 
-    ## [1] "H0 rejected."
+    ## [1] "There is not enough evidence to reject H_0"
 
-``` r
-sprintf("test statistic = %f , p-value=%f, confidence interval = (%f, %f)", t, pval, lowerBound, upperBound)
-```
+    sprintf("test statistic = %f , p-value=%f, confidence interval = (%f, %f)", t, pval, lowerBound, upperBound)
 
-    ## [1] "test statistic = 2.185085 , p-value=0.029321, confidence interval = (-1.283157, 1.283157)"
+    ## [1] "test statistic = 1.481162 , p-value=0.139557, confidence interval = (-1.649675, 1.649675)"
 
-``` r
-#t.test
-t.test(logDellPrices, logHpPrices)
-```
+    #t.test
+    t.test(logDellPrices, logHpPrices)
 
     ## 
     ##  Welch Two Sample t-test
     ## 
     ## data:  logDellPrices and logHpPrices
-    ## t = 2.1851, df = 503.74, p-value = 0.02934
+    ## t = 1.4812, df = 315.63, p-value = 0.1396
     ## alternative hypothesis: true difference in means is not equal to 0
     ## 95 percent confidence interval:
-    ##  0.01507785 0.28388985
+    ##  -0.03515752  0.24930117
     ## sample estimates:
     ## mean of x mean of y 
-    ##  10.03851   9.88903
+    ##  9.670211  9.563139
 
-``` r
-x <- seq(-3, 3, by = 0.01)
-t_dense <- dt(x, n+m-2)
+    x <- seq(-3, 3, by = 0.01)
+    t_dense <- dt(x, n+m-2)
 
-plot(x, t_dense,type='l', xlab="x value",
-  ylab="Density", main="Student's density")
+    plot(x, t_dense,type='l', xlab="x value",
+      ylab="Density", main="Student's density")
 
-i <- x >= lowerBound & x <= upperBound
-lines(x, t_dense)
-polygon(c(lowerBound,x[i],upperBound), c(0,t_dense[i],0), col="yellow")
+    i <- x >= lowerBound & x <= upperBound
+    lines(x, t_dense)
 
-area <- pt(upperBound, n+m-2) - pt(lowerBound, n+m-2)
-result <- paste("P(",lowerBound,"< IQ <",upperBound,") =",
-   signif(area, digits=3))
-mtext(result,3)
-abline(v=t, col="red")
-abline(v=lowerBound, col="blue")
-abline(v=upperBound, col="blue")
-```
+    polygon(x = c(-3, seq(-3, lowerBound, 0.01), lowerBound),
+            y = c(0, dt(seq(-3, lowerBound, 0.01),n+m-2), 0),
+            col = 'blue')
 
-![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_github/unnamed-chunk-4-1.png)
-**Odrzucamy hipotezę zerową** - wartość testu wpada do obszaru
-krytycznego/ p-value mniejsze niż ustalony poziom istotności - na rzecz
-hipotezy alternatywnej. **Średnie zlogarytmowane ceny notebooków różnią
-się.**
+    polygon(x = c(upperBound, seq(upperBound, 3, 0.01), 3),
+            y = c(0, dt(seq(upperBound, 3, 0.01), n+m-2), 0),
+            col = 'blue')
+
+    area <- pt(upperBound, n+m-2) - pt(lowerBound, n+m-2)
+    abline(v=t, col="red")
+    abline(v=lowerBound, col="blue")
+    abline(v=upperBound, col="blue")
+
+![](C:/Users/Asia/SD/untitled2/statistical-data-analysis/first-homework_files/figure-markdown_strict/unnamed-chunk-4-1.png)
+**Nie możemy odrzucić hipotezy zerowej** - wartość testu nie wpada do
+obszaru krytycznego/ p-value większe niż ustalony poziom istotności.  
