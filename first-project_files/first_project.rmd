@@ -3,7 +3,7 @@ title: "Pierwszy projekt zaliczeniowy"
 subtitle: Statystyczna analiza danych 2020/2021
 author: Joanna Kęczkowska
 date: 26.04.2021
-output: html_notebook
+output: html_document
 ---
 
 Celem zadania jest statystyczna analiza danych znajdujących się w pliku people.tab.
@@ -25,18 +25,25 @@ summary(df)
 ```
 
 Dane zawierają **500 obserwacji**. \
-**Zmienne ilościowe**: 'age', 'weight', 'height', 'number_of_kids', 'expenses'. \
-**Zmienne jakościowe**: 'gender', 'married', 'pet'. \ Niepokojące są ujemne wartości w cesze 'expanses', jak również factor 'other' w cesze 'gender'. Wartość 'none' w cesze 'pet' interpretuję jako nieposiadanie zwierzęcia - przy takim założeniu **w zbiorze danych nie występują braki**.
+**Zmienne ilościowe**: 'age', 'weight', 'height', 'expenses'. \
+**Zmienne jakościowe**: 'gender', 'married', 'pet', 'number_of_kids'. \ Niepokojące są ujemne wartości w cesze 'expanses', jak również factor 'other' w cesze 'gender'. Wartość 'none' w cesze 'pet' interpretuję jako nieposiadanie zwierzęcia. W zmiennej 'gender' potraktuję factor 'other' jako brak informacji.
 ```{r Faktoryzacja zmiennych jakościowych}
 df$gender <- factor(df$gender)
 df$pet <- factor(df$pet)
 df$married <- factor(df$married)
+df$number_of_kids <- factor(df$number_of_kids)
 summary(df)
 ```
+
+Współczynnik korelacji r jest liczbą pomiędzy –1 i 1, która określa, w jakim stopniu dwie zmienne są współzależne.
+Wartość r = 0 oznacza, że nie ma żadnego powiązania, a wartość 1 lub –1
+oznacza idealne powiązanie. Znak współczynnika korelacji wskazuje, czy zmienne są skorelowane
+dodatnio (większe wartości w jednej zmiennej pokrywają się z większymi wartościami w drugiej), czy
+też ujemnie (większe wartości w jednej zmiennej pokrywają się z mniejszymi wartościami w drugiej).
 ```{r Korelacja zmiennych ilościowych, warning = FALSE}
 library(ggcorrplot)
-numerical <- df[c("expenses", "number_of_kids", "height", "weight", "age")]
-categorial <- df[c("married", "gender", "pet")]
+numerical <- df[c("expenses", "height", "weight", "age")]
+categorial <- df[c("married", "gender", "pet", "number_of_kids")]
 
 corr <- round(cor(numerical), 2)
 
@@ -49,7 +56,7 @@ W przypadku zmiennych jakościowych nie możemy zbadać korelacji tak jak dla zm
 Dla tego typu zmiennych posłużymy się testem zgodności $\chi^2$  \
 
 dla danej komórki wartość oczekiwana: $e = \frac{row.sum*col.sum}{grand.total}$ \
-Chi-square statistic: ${\chi}^2 = \sum \frac{(o-e)^2}{e}$, gdzie o - obserwacja, e - wartosc oczekiwana
+Chi-square statistic: ${\chi}^2 = \sum \frac{(o-e)^2}{e}$, gdzie o - obserwacja, e - wartość oczekiwana
 
 Hipoteza zerowa $H_0$: Zmienne są **niezależne**.\
 Hipoteza alternatywna $H_1$: Zmienne są **zależne**.\
@@ -58,7 +65,7 @@ Hipoteza alternatywna $H_1$: Zmienne są **zależne**.\
 #funkcja do testowania korelacji zmiennych jakościowych
 #przyjmuje dwie kolumny zmiennych kategorycznych, które zamienia na tablicę wielodzielczą
 
-testchi <- function(feature1, feature2) {
+testchi <- function(feature1, feature2, sq = 50) {
   alpha <- 0.05 #5% level of significance
   TAB <- table(feature1, feature2)
   total <- sum(TAB)
@@ -87,7 +94,7 @@ testchi <- function(feature1, feature2) {
 
   quantile <- qchisq(alpha, df, lower.tail = FALSE) #quantile of chi-square distribution
 
-  x <- seq(0, 50, by = 0.1)
+  x <- seq(0, sq, by = 0.1)
   chi_dense <- dchisq(x, df)
 
   plot(x, chi_dense,type='l', xlab="x value",
@@ -95,7 +102,7 @@ testchi <- function(feature1, feature2) {
 
   i <- x >= quantile
   lines(x, chi_dense)
-  polygon(c(quantile,x[i],50), c(0,chi_dense[i],0), col="blue")
+  polygon(c(quantile,x[i],sq), c(0,chi_dense[i],0), col="blue")
 
   area <- pchisq(quantile, df, lower.tail = TRUE)
   result <- paste("quantile =", signif(area, digits=3))
@@ -109,18 +116,21 @@ testchi <- function(feature1, feature2) {
 }
 
 gp <- testchi(df$gender, df$pet)
-gm <- testchi(df$gender, df$married)
-pm <- testchi(df$pet, df$married)
-
-
 sprintf("GENDER/PET, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gp[[1]], gp[[2]], gp[[3]])
-
+gm <- testchi(df$gender, df$married)
 sprintf("GENDER/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gm[[1]], gm[[2]], gm[[3]])
-
+pm <- testchi(df$pet, df$married)
 sprintf("PET/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", pm[[1]], pm[[2]], pm[[3]])
+nm <- testchi(df$number_of_kids, df$married, sq=210)
+sprintf("KIDS/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", nm[[1]], nm[[2]], nm[[3]])
+np <- testchi(df$number_of_kids, df$pet)
+sprintf("KIDS/PET, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", np[[1]], np[[2]], np[[3]])
+gn <- testchi(df$gender, df$number_of_kids)
+sprintf("PET/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gn[[1]], gn[[2]], gn[[3]])
+
 ```
 
-Żadne z trzech statystyk testowych nie wpada do przedziału krytycznego, co ilustrują wykresy. Nie mamy podstaw do odrzucenia hipotezy zerowej. Zatem **żadne dwie zmienne jakościowe nie wydają się być skorelowane**.\
+Jedyne dwie skorelowane zmienne jakościowe to 'number_of_kids' i 'married' - statystyka testowa wpada do obszaru krytycznego. W przypadku pozostałych par zmiennych nie mamy podstawy do odrzucenia hipotezy zerowej. Żadne dwie inne zmienne nie wydają się być skorelowane. \
 
 
 Jeszcze tylko szybkie sprawdzenie:
@@ -129,12 +139,19 @@ Jeszcze tylko szybkie sprawdzenie:
 chisq.test(table(df$gender, df$pet))
 chisq.test(table(df$gender, df$married))
 chisq.test(table(df$pet, df$married))
+chisq.test(table(df$number_of_kids, df$married))
+chisq.test(table(df$number_of_kids, df$pet))
+chisq.test(table(df$gender, df$number_of_kids))
 ```
 
 **2.** **Podsumuj dane przynajmniej trzema różnymi wykresami.** Należy przygotować:
-a) wykres typu scatter-plot (taki jak na wykładzie 6, slajd 3) dla wszystkich zmiennych
+**a)** wykres typu scatter-plot (taki jak na wykładzie 6, slajd 3) dla wszystkich zmiennych
 objaśniających ilościowych i zmiennej objaśnianej.
-b) Wykresy typu pudełkowy (boxplot) dla jednej wybranej zmiennej ilościowej.
-c) Wykres typu słupkowy (barplot) dla jednej wybranej zmiennej jakościowej.
-Mile widziane dodatkowe wykresy wg własnej inwencji (np histogram, punktowy, liniowy, mapa
-ciepła...).
+**b)** Wykresy typu pudełkowy (boxplot) dla jednej wybranej zmiennej ilościowej.
+**c)** Wykres typu słupkowy (barplot) dla jednej wybranej zmiennej jakościowej.
+Dodatkowe wykresy wg własnej inwencji (np. histogram, punktowy, liniowy, mapa ciepła...).
+```{r}
+library(GGally)
+
+ggpairs(numerical, title="Correlogram of numerical features")
+```
