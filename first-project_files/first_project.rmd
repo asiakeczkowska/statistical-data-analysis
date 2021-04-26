@@ -1,0 +1,140 @@
+---
+title: "Pierwszy projekt zaliczeniowy"
+subtitle: Statystyczna analiza danych 2020/2021
+author: Joanna Kęczkowska
+date: 26.04.2021
+output: html_notebook
+---
+
+Celem zadania jest statystyczna analiza danych znajdujących się w pliku people.tab.
+Dane: Są to dane symulowane; opisują wiek (zmienna age), wagę (weight), wzrost (height),
+płeć (gender), stan cywilny (married), liczbę dzieci (number_of_kids), posiadane zwierzę
+domowe (pet) oraz miesięczne wydatki (expenses) pewnych osób. We wszystkich zadaniach
+poniżej zmienna expenses jest zmienną objaśnianą (zależną), a pozostałe zmienne są
+zmiennymi objaśniającymi (niezależnymi).
+
+**1.** **Wczytaj dane, obejrzyj je i podsumuj w dwóch-trzech zdaniach.** Pytania pomocnicze: ile
+jest obserwacji, ile zmiennych ilościowych, a ile jakościowych? Czy są zależności w zmiennych
+objaśniających (policz i zaprezentuj na wykresach korelacje pomiędzy zmiennymi ilościowymi, a
+także zbadaj zależność zmiennych jakościowych). Skomentuj wyniki. Czy występują jakieś braki
+danych?
+```{r Wczytywanie danych}
+df <- read.delim("peopletab.txt", header = TRUE, sep='\t')
+sprintf("Dane zawierają %d obserwacji i %d cech", dim(df)[1], dim(df)[2])
+summary(df)
+```
+
+Dane zawierają **500 obserwacji**. \
+**Zmienne ilościowe**: 'age', 'weight', 'height', 'number_of_kids', 'expenses'. \
+**Zmienne jakościowe**: 'gender', 'married', 'pet'. \ Niepokojące są ujemne wartości w cesze 'expanses', jak również factor 'other' w cesze 'gender'. Wartość 'none' w cesze 'pet' interpretuję jako nieposiadanie zwierzęcia - przy takim założeniu **w zbiorze danych nie występują braki**.
+```{r Faktoryzacja zmiennych jakościowych}
+df$gender <- factor(df$gender)
+df$pet <- factor(df$pet)
+df$married <- factor(df$married)
+summary(df)
+```
+```{r Korelacja zmiennych ilościowych, warning = FALSE}
+library(ggcorrplot)
+numerical <- df[c("expenses", "number_of_kids", "height", "weight", "age")]
+categorial <- df[c("married", "gender", "pet")]
+
+corr <- round(cor(numerical), 2)
+
+ggcorrplot(corr, method = "circle")
+
+```
+Zgodnie z intuicją **wiek jest dodatnio skorelowany z zarobkami** i **wzrost jest dodatnio skorelowany z wagą**.
+
+W przypadku zmiennych jakościowych nie możemy zbadać korelacji tak jak dla zmiennych ilościowych - przypisane do nich wartości liczbowe są jedynie symboliczne. \
+Dla tego typu zmiennych posłużymy się testem zgodności $\chi^2$  \
+
+dla danej komórki wartość oczekiwana: $e = \frac{row.sum*col.sum}{grand.total}$ \
+Chi-square statistic: ${\chi}^2 = \sum \frac{(o-e)^2}{e}$, gdzie o - obserwacja, e - wartosc oczekiwana
+
+Hipoteza zerowa $H_0$: Zmienne są **niezależne**.\
+Hipoteza alternatywna $H_1$: Zmienne są **zależne**.\
+```{r Korelacja zmiennych jakościowych}
+
+#funkcja do testowania korelacji zmiennych jakościowych
+#przyjmuje dwie kolumny zmiennych kategorycznych, które zamienia na tablicę wielodzielczą
+
+testchi <- function(feature1, feature2) {
+  alpha <- 0.05 #5% level of significance
+  TAB <- table(feature1, feature2)
+  total <- sum(TAB)
+
+  n <- nlevels(feature1)
+  m <- nlevels(feature2)
+
+  sumRows <- margin.table(TAB, 1) #rows
+  sumCols <- margin.table(TAB,2) #columns
+
+  sumRows <- as.vector(sumRows)
+  sumCols <- as.vector(sumCols)
+
+  exp <- matrix(rep(0, n*m), nrow=n, ncol=m)
+  exp[] <- 0L
+  for(i in 1:n) {
+    exp[i, ] <- sumRows[i]*sumCols/total
+  }
+
+  Tab <- data.frame(TAB)
+  obs <- matrix(Tab[["Freq"]], nrow = n, ncol = m)
+
+  chi_sq <- sum((obs-exp)^2/exp) #test statistic
+  df <- (nrow(obs)-1)*(ncol(obs)-1) #deg of freedom
+  pval <- pchisq(chi_sq, df, lower.tail=FALSE)  #right-tailed
+
+  quantile <- qchisq(alpha, df, lower.tail = FALSE) #quantile of chi-square distribution
+
+  x <- seq(0, 50, by = 0.1)
+  chi_dense <- dchisq(x, df)
+
+  plot(x, chi_dense,type='l', xlab="x value",
+  ylab="Density", main="Chi-square density")
+
+  i <- x >= quantile
+  lines(x, chi_dense)
+  polygon(c(quantile,x[i],50), c(0,chi_dense[i],0), col="blue")
+
+  area <- pchisq(quantile, df, lower.tail = TRUE)
+  result <- paste("quantile =", signif(area, digits=3))
+  mtext(result,3)
+  abline(v=chi_sq, col="red")
+  abline(v=quantile, col="blue")
+
+  c <- list(chi_sq, pval, quantile)
+  return (c)
+
+}
+
+gp <- testchi(df$gender, df$pet)
+gm <- testchi(df$gender, df$married)
+pm <- testchi(df$pet, df$married)
+
+
+sprintf("GENDER/PET, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gp[[1]], gp[[2]], gp[[3]])
+
+sprintf("GENDER/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gm[[1]], gm[[2]], gm[[3]])
+
+sprintf("PET/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", pm[[1]], pm[[2]], pm[[3]])
+```
+
+Żadne z trzech statystyk testowych nie wpada do przedziału krytycznego, co ilustrują wykresy. Nie mamy podstaw do odrzucenia hipotezy zerowej. Zatem **żadne dwie zmienne jakościowe nie wydają się być skorelowane**.\
+
+
+Jeszcze tylko szybkie sprawdzenie:
+```{r, warning = FALSE}
+#sprawdźmy
+chisq.test(table(df$gender, df$pet))
+chisq.test(table(df$gender, df$married))
+chisq.test(table(df$pet, df$married))
+```
+
+**2.** **Podsumuj dane przynajmniej trzema różnymi wykresami.** Należy przygotować:
+a) wykres typu scatter-plot (taki jak na wykładzie 6, slajd 3) dla wszystkich zmiennych
+objaśniających ilościowych i zmiennej objaśnianej.
+b) Wykresy typu pudełkowy (boxplot) dla jednej wybranej zmiennej ilościowej.
+c) Wykres typu słupkowy (barplot) dla jednej wybranej zmiennej jakościowej.
+Mile widziane dodatkowe wykresy wg własnej inwencji (np histogram, punktowy, liniowy, mapa
+ciepła...).
