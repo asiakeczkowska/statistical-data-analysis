@@ -3,7 +3,7 @@ title: "Pierwszy projekt zaliczeniowy"
 subtitle: Statystyczna analiza danych 2020/2021
 author: Joanna Kęczkowska
 date: 26.04.2021
-output: html_document
+output: html_notebook
 ---
 
 Celem zadania jest statystyczna analiza danych znajdujących się w pliku people.tab.
@@ -12,7 +12,13 @@ płeć (gender), stan cywilny (married), liczbę dzieci (number_of_kids), posiad
 domowe (pet) oraz miesięczne wydatki (expenses) pewnych osób. We wszystkich zadaniach
 poniżej zmienna expenses jest zmienną objaśnianą (zależną), a pozostałe zmienne są
 zmiennymi objaśniającymi (niezależnymi).
-
+```{r include = FALSE}
+library(car)
+library(ggridges)
+library(ggplot2)
+library(viridis)
+library(hrbrthemes)
+```
 **1.** **Wczytaj dane, obejrzyj je i podsumuj w dwóch-trzech zdaniach.** Pytania pomocnicze: ile
 jest obserwacji, ile zmiennych ilościowych, a ile jakościowych? Czy są zależności w zmiennych
 objaśniających (policz i zaprezentuj na wykresach korelacje pomiędzy zmiennymi ilościowymi, a
@@ -65,7 +71,7 @@ Hipoteza alternatywna $H_1$: Zmienne są **zależne**.\
 #funkcja do testowania korelacji zmiennych jakościowych
 #przyjmuje dwie kolumny zmiennych kategorycznych, które zamienia na tablicę wielodzielczą
 
-testchi <- function(feature1, feature2, sq = 50) {
+testchi <- function(feature1, feature2, sq = 20, t) {
   alpha <- 0.05 #5% level of significance
   TAB <- table(feature1, feature2)
   total <- sum(TAB)
@@ -105,7 +111,7 @@ testchi <- function(feature1, feature2, sq = 50) {
   polygon(c(quantile,x[i],sq), c(0,chi_dense[i],0), col="blue")
 
   area <- pchisq(quantile, df, lower.tail = TRUE)
-  result <- paste("quantile =", signif(area, digits=3))
+  result <- paste("quantile =", signif(area, digits=3), " ", t)
   mtext(result,3)
   abline(v=chi_sq, col="red")
   abline(v=quantile, col="blue")
@@ -114,18 +120,18 @@ testchi <- function(feature1, feature2, sq = 50) {
   return (c)
 
 }
-
-gp <- testchi(df$gender, df$pet)
+par(mfrow = c(3, 2))
+gp <- testchi(df$gender, df$pet, t="GENDER/PET")
+gm <- testchi(df$gender, df$married, t="GENDER/MARRIED")
+pm <- testchi(df$pet, df$married, t="PET/MARRIED")
+nm <- testchi(df$number_of_kids, df$married, sq=210, t="KIDS/MARRIED")
+np <- testchi(df$number_of_kids, df$pet, t="KIDS/PET", sq=50)
+gn <- testchi(df$gender, df$number_of_kids, t="PET/MARRIED", sq=30)
 sprintf("GENDER/PET, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gp[[1]], gp[[2]], gp[[3]])
-gm <- testchi(df$gender, df$married)
 sprintf("GENDER/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gm[[1]], gm[[2]], gm[[3]])
-pm <- testchi(df$pet, df$married)
 sprintf("PET/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", pm[[1]], pm[[2]], pm[[3]])
-nm <- testchi(df$number_of_kids, df$married, sq=210)
 sprintf("KIDS/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", nm[[1]], nm[[2]], nm[[3]])
-np <- testchi(df$number_of_kids, df$pet)
 sprintf("KIDS/PET, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", np[[1]], np[[2]], np[[3]])
-gn <- testchi(df$gender, df$number_of_kids)
 sprintf("PET/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gn[[1]], gn[[2]], gn[[3]])
 
 ```
@@ -150,8 +156,184 @@ objaśniających ilościowych i zmiennej objaśnianej.
 **b)** Wykresy typu pudełkowy (boxplot) dla jednej wybranej zmiennej ilościowej.
 **c)** Wykres typu słupkowy (barplot) dla jednej wybranej zmiennej jakościowej.
 Dodatkowe wykresy wg własnej inwencji (np. histogram, punktowy, liniowy, mapa ciepła...).
-```{r}
+```{r Correlogram dla zmiennych ilościowych}
 library(GGally)
 
 ggpairs(numerical, title="Correlogram of numerical features")
 ```
+
+Trochę inny wykres od 'ggcorrplot(corr, method = "circle")' ale prowadzący do tych samych wniosków: dodatnia korelacja wzrostu z wagą i dodatnia korelacja wieku z zarobkami.
+
+```{r BoxPlot dla expenses}
+expenses <- df$expenses
+quantiles <- unname(quantile(expenses))
+boxplot(expenses, horizontal = TRUE, col="powderblue", outcol="red", main="BoxPlot for expenses")
+
+#linie pomocnicze
+abline(v = max(expenses), col="blue")
+abline(v = min(expenses), col="red")
+abline(v = median(expenses), col="green")
+result <- paste("50% of values are between ", round(quantiles[2], 2), " and ",round(quantiles[4], 2), "(black vertical lines)")
+mtext(result,3)
+abline(v=quantiles[4], col="black") #quantile 75%
+abline(v=quantiles[2], col="black") #quantile 25%
+
+```
+
+
+```{r}
+library(ggplot2)
+
+ggplot(df, aes(x=number_of_kids))+ geom_bar() + labs(x = "Number_of_kids",
+       y = "Frequency",
+       title  = "Persons by number of kids")
+```
+
+```{r Dodatkowy wykres}
+ggplot(df, aes(x = expenses, y = gender, fill=stat(x))) +  geom_density_ridges_gradient()+
+labs(x = "Expenses",
+       y = "Gender",
+       title  = "Expenses by gender")
+```
+**3.** **Policz p-wartości dla hipotez o wartości średniej m = 170 i medianie me = 165 (cm) dla
+zmiennej wzrost.** Wybierz statystykę testową dla alternatywy lewostronnej, podaj założenia, z
+jakich korzystałeś i skomentuj czy wydają Ci się uprawnione.
+
+Test dla wariancji: $t=\frac {\overline{X}-\mu}{\sigma}\dot.\sqrt{n}$, gdzie $\overline{X}$ - średnia próby, $n$ - liczba obserwacji, $\sigma$ - odchylenie standardowe
+
+Hipoteza zerowa H0: $\mu = 170$
+Hipoteza alternatywna H1: $\mu < 170$
+```{r Testowanie hipotezy dla wartości średniej}
+
+alpha <- 0.05
+m <- 170
+me <- 165
+height <- df$height
+n <- length(height)
+
+test <- (mean(height)-m)/sd(height)*sqrt(n)
+def <- n-1
+
+quantile <- qt(alpha, def) #left-tailed
+pval <- pt(test, def)
+
+x<- seq(-5, 5, by=0.01)
+t_dense <- dt(x, n-1)
+
+plot(x, t_dense,type='l', xlab="x value",
+  ylab="Density", main="Student's density")
+
+i<- x<=quantile
+lines(x, t_dense)
+
+polygon(c(-5,quantile,x[i]), c(0,t_dense[i],0),col="blue")
+sprintf("test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", test, pval, quantile)
+area <- pt(quantile, def)
+result <- paste("quantile =", signif(area, digits=3))
+mtext(result,3)
+abline(v=test, col="red")
+abline(v=quantile, col="blue")
+if(alpha > pval) {
+  print("H0 rejected.")
+}else {
+  print("There is not enough evidence to reject H_0")
+}
+
+
+```
+```{r}
+#sprawdźmy
+t.test(height, mu=m)
+```
+
+```{r Testowanie hipotezy dla mediany}
+#tu wpisać test dla mediany
+```
+**4.** **Policz dwustronne przedziały ufności na poziomie 0.99 dla zmiennej wiek dla
+następujących parametrów rozkładu:**
+1. średnia i odchylenie standardowe;
+2. kwantyle 1/4, 2/4 i 3/4.
+Podaj założenia, z jakich korzystałeś i skomentuj czy wydają Ci się uprawnione.
+
+**Studentyzowany przedział ufności**:\
+$\left(\bar{X} - \frac {t(1-\alpha/2, n-1)}{\sqrt{n}}\hat{S}, \bar{X} + \frac{t(1-\alpha/2, n-1)}{\sqrt{n}}\hat{S}\right)$
+gdzie $\bar{X}$ to średnia, $\hat{S}$ to pierwiastek z *nieobciążonego* estymatora wariancji, a $t(1-\alpha/2, n-1)$ to kwantyl na poziomie $1-\alpha/2$ dla rozkładu t Studenta o $n-1$ stopniach swobody.\
+**Asymptotyczny przedział ufności**:\
+$\left( \bar{X} - \frac {q(1-\alpha/2)}{\sqrt{n}}\hat{S}, \bar{X} + \frac{q(1-\alpha/2)}{\sqrt{n}}\hat{S} \right)$
+gdzie $q(1-\alpha/2)$ jest kwantylem na poziomie $1 - \alpha/2$ ze standardowego rozkładu normalnego.\
+```{r Sprawdzanie czy age ma rozkład normalny}
+alpha <- 0.01
+#ocena czy zmienna age ma rozkład normalny
+age <- df$age
+qqPlot(df$age)
+n<- length(age)
+
+```
+
+```{r Dwustronne przedziały ufności na poziomie 0.99 dla zmiennej age - studentyzowane, asymptotyczne}
+
+rightstud <-  mean(age) + 1/sqrt(n-1)*sd(age)*qt(1-alpha/2, (n-1))
+leftstud <-  mean(age) - 1/sqrt(n-1)*sd(age)*qt(1-alpha/2, (n-1))
+
+rightasympt <- mean(age) + (qnorm(1-alpha/2))/sqrt(n-1)*sd(age)
+leftasympt <- mean(age) - (qnorm(1-alpha/2))/sqrt(n-1)*sd(age)
+
+sprintf("(%f, %f)", leftstud, rightstud)
+sprintf("(%f, %f)",leftasympt, rightasympt)
+
+
+plot(density(age),type='l', xlab="x value", ylab="Density", main="Confidence intervals for df$age density")
+
+abline(v=leftstud, col="red")
+abline(v=rightstud, col="red")
+abline(v=leftasympt, col="blue")
+abline(v=rightasympt, col="blue")
+
+legend(10,0.02,c("student","asympt"), lty = c(1,1), col=c('red','blue'),ncol=1)
+```
+```{r Dwustronne przedziały ufności na poziomie 0.99 dla zmiennej age - kwantyle 1/4, 1/2, 3/4}
+lv <- levels(quantcut(age, probs=seq(0, 1, 1/4)))
+lv
+plot(density(age),type='l', xlab="x value", ylab="Density", main="Confidence intervals for df$age density")
+
+#jeszcze cos tu bedzie
+```
+**5.** **Przetestuj na poziomie istotności 0.01 trzy hipotezy istotności:** \
+1. różnicy między średnią wartością wybranej zmiennej dla kobiet i dla mężczyzn; \
+2. zależności między dwiema zmiennymi ilościowymi; \
+3. zależności między dwiema zmiennymi jakościowymi. \
+
+**Ponadto**, \
+4. przetestuj hipotezę o zgodności z konkretnym rozkładem parametrycznym dla
+wybranej zmiennej (np. "zmienna A ma rozkład wykładniczy z parametrem 10").
+Podaj założenia, z jakich korzystałeś i skomentuj czy wydają Ci się uprawnione.
+
+*3.* była robiona wyżej dla wszystkich zmiennych jakościowych.
+
+```{r Różnica między średnią wartością wybranej zmiennej dla kobiet i dla mężczyzn}
+
+```
+```{r  Zależność między age i expenses, weight i height}
+
+```
+
+**6.** **Oszacuj model regresji liniowej, przyjmując za zmienną zależną (y) wydatki domowe
+(expenses) a jako zmienne niezależne (x) przyjmując pozostałe zmienne.** \
+Rozważ, czy konieczne są transformacje zmiennych lub zmiennej objaśnianej. Podaj RSS, R^2, p-wartości i
+oszacowania współczynników w pełnym modelu (w modelu zawierającym wszystkie zmienne).
+Następnie wybierz jedną zmienną objaśniającą, którą można by z pełnego modelu odrzucić
+(która najgorzej tłumaczy expenses). Aby dokonać wyboru takiej zmiennej, dla każdej ze
+zmiennych objaśniających sprawdź: \
+- Jaką ma p-wartość w pełnym modelu? \
+- O ile zmniejsza się R^2, gdy ją usuniemy z pełnego modelu? \
+- O ile zwiększa się RSS, gdy ją usuniemy z pełnego modelu? \
+Opisz wnioski. \
+Oszacuj model ze zbiorem zmiennych objaśniających pomniejszonym o wybraną zmienną.
+Sprawdź czy w otrzymanym przez Ciebie modelu spełnione są założenia modelu liniowego i
+przedstaw na wykresach diagnostycznych: wykresie zależności reszt od zmiennej objaśnianej,
+na wykresie reszt studentyzowanych i na wykresie dźwigni i przedyskutuj, czy są spełnione./
+```{r}
+linear_regression <- lm(expenses ~ age + weight + height + gender + married + number_of_kids + pet, df)
+summary(linear_regression)
+```
+~TBA
