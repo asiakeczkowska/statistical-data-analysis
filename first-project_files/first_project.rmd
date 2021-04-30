@@ -13,11 +13,17 @@ domowe (pet) oraz miesięczne wydatki (expenses) pewnych osób. We wszystkich za
 poniżej zmienna expenses jest zmienną objaśnianą (zależną), a pozostałe zmienne są
 zmiennymi objaśniającymi (niezależnymi).
 ```{r include = FALSE}
+library(gtools)
 library(car)
 library(ggridges)
 library(ggplot2)
 library(viridis)
 library(hrbrthemes)
+library(networkD3)
+library(dplyr)
+library(plotly)
+library(rstatix)
+library(gridExtra)
 ```
 **1.** **Wczytaj dane, obejrzyj je i podsumuj w dwóch-trzech zdaniach.** Pytania pomocnicze: ile
 jest obserwacji, ile zmiennych ilościowych, a ile jakościowych? Czy są zależności w zmiennych
@@ -25,7 +31,7 @@ objaśniających (policz i zaprezentuj na wykresach korelacje pomiędzy zmiennym
 także zbadaj zależność zmiennych jakościowych). Skomentuj wyniki. Czy występują jakieś braki
 danych?
 ```{r Wczytywanie danych}
-df <- read.delim("peopletab.txt", header = TRUE, sep='\t')
+df <- read.delim("peopletab.txt", header = TRUE, sep = '\t')
 sprintf("Dane zawierają %d obserwacji i %d cech", dim(df)[1], dim(df)[2])
 summary(df)
 ```
@@ -56,7 +62,7 @@ corr <- round(cor(numerical), 2)
 ggcorrplot(corr, method = "circle")
 
 ```
-Zgodnie z intuicją **wiek jest dodatnio skorelowany z zarobkami** i **wzrost jest dodatnio skorelowany z wagą**.
+Zgodnie z intuicją **wiek jest dodatnio skorelowany z wydatkami** i **wzrost jest dodatnio skorelowany z wagą**.
 
 W przypadku zmiennych jakościowych nie możemy zbadać korelacji tak jak dla zmiennych ilościowych - przypisane do nich wartości liczbowe są jedynie symboliczne. \
 Dla tego typu zmiennych posłużymy się testem zgodności $\chi^2$  \
@@ -80,62 +86,73 @@ testchi <- function(feature1, feature2, sq = 20, t) {
   m <- nlevels(feature2)
 
   sumRows <- margin.table(TAB, 1) #rows
-  sumCols <- margin.table(TAB,2) #columns
+  sumCols <- margin.table(TAB, 2) #columns
 
   sumRows <- as.vector(sumRows)
   sumCols <- as.vector(sumCols)
 
-  exp <- matrix(rep(0, n*m), nrow=n, ncol=m)
+  exp <- matrix(rep(0, n * m), nrow = n, ncol = m)
   exp[] <- 0L
-  for(i in 1:n) {
-    exp[i, ] <- sumRows[i]*sumCols/total
+  for (i in 1:n) {
+    exp[i,] <- sumRows[i] * sumCols / total
   }
 
   Tab <- data.frame(TAB)
   obs <- matrix(Tab[["Freq"]], nrow = n, ncol = m)
 
-  chi_sq <- sum((obs-exp)^2/exp) #test statistic
-  df <- (nrow(obs)-1)*(ncol(obs)-1) #deg of freedom
-  pval <- pchisq(chi_sq, df, lower.tail=FALSE)  #right-tailed
+  chi_sq <- sum((obs - exp)^2 / exp) #test statistic
+  df <- (nrow(obs) - 1) * (ncol(obs) - 1) #deg of freedom
+  pval <- pchisq(chi_sq, df, lower.tail = FALSE)  #right-tailed
 
   quantile <- qchisq(alpha, df, lower.tail = FALSE) #quantile of chi-square distribution
 
   x <- seq(0, sq, by = 0.1)
   chi_dense <- dchisq(x, df)
 
-  plot(x, chi_dense,type='l', xlab="x value",
-  ylab="Density", main="Chi-square density")
+  plot(x, chi_dense, type = 'l', xlab = "x value",
+       ylab = "Density", main = "Chi-square density")
 
   i <- x >= quantile
   lines(x, chi_dense)
-  polygon(c(quantile,x[i],sq), c(0,chi_dense[i],0), col="blue")
+  polygon(c(quantile, x[i], sq), c(0, chi_dense[i], 0), col = "blue")
 
   area <- pchisq(quantile, df, lower.tail = TRUE)
-  result <- paste("quantile =", signif(area, digits=3), " ", t)
-  mtext(result,3)
-  abline(v=chi_sq, col="red")
-  abline(v=quantile, col="blue")
+  result <- paste("quantile =", signif(area, digits = 3), " ", t)
+  mtext(result, 3)
+  abline(v = chi_sq, col = "red")
+  abline(v = quantile, col = "blue")
 
   c <- list(chi_sq, pval, quantile)
-  return (c)
+  return(c)
 
 }
 par(mfrow = c(3, 2))
-gp <- testchi(df$gender, df$pet, t="GENDER/PET")
-gm <- testchi(df$gender, df$married, t="GENDER/MARRIED")
-pm <- testchi(df$pet, df$married, t="PET/MARRIED")
-nm <- testchi(df$number_of_kids, df$married, sq=210, t="KIDS/MARRIED")
-np <- testchi(df$number_of_kids, df$pet, t="KIDS/PET", sq=50)
-gn <- testchi(df$gender, df$number_of_kids, t="PET/MARRIED", sq=30)
+gp <- testchi(df$gender, df$pet, t = "GENDER/PET")
+gm <- testchi(df$gender, df$married, t = "GENDER/MARRIED")
+pm <- testchi(df$pet, df$married, t = "PET/MARRIED")
+nm <- testchi(df$number_of_kids, df$married, sq = 210, t = "KIDS/MARRIED")
+np <- testchi(df$number_of_kids, df$pet, t = "KIDS/PET", sq = 50)
+gn <- testchi(df$gender, df$number_of_kids, t = "GENDER/KIDS", sq = 30)
 sprintf("GENDER/PET, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gp[[1]], gp[[2]], gp[[3]])
 sprintf("GENDER/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gm[[1]], gm[[2]], gm[[3]])
 sprintf("PET/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", pm[[1]], pm[[2]], pm[[3]])
 sprintf("KIDS/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", nm[[1]], nm[[2]], nm[[3]])
 sprintf("KIDS/PET, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", np[[1]], np[[2]], np[[3]])
-sprintf("PET/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gn[[1]], gn[[2]], gn[[3]])
+sprintf("GENDER/KIDS, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gn[[1]], gn[[2]], gn[[3]])
 
 ```
 
+```{r}
+p1 <- ggplot(df, aes(fill=gender, x=pet)) + geom_bar(position="stack")
+p2 <- ggplot(df, aes(fill=gender, x=married)) + geom_bar(position="stack")
+p3 <- ggplot(df, aes(fill=married, x=pet)) + geom_bar(position="stack")
+p4 <- ggplot(df, aes(fill=married, x=number_of_kids)) + geom_bar(position="stack")
+p5 <- ggplot(df, aes(fill=number_of_kids, x=pet)) + geom_bar(position="stack")
+p6 <- ggplot(df, aes(fill=gender, x=number_of_kids)) + geom_bar(position="stack")
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow=3)
+
+
+```
 Jedyne dwie skorelowane zmienne jakościowe to 'number_of_kids' i 'married' - statystyka testowa wpada do obszaru krytycznego. W przypadku pozostałych par zmiennych nie mamy podstawy do odrzucenia hipotezy zerowej. Żadne dwie inne zmienne nie wydają się być skorelowane. \
 
 
@@ -159,24 +176,21 @@ Dodatkowe wykresy wg własnej inwencji (np. histogram, punktowy, liniowy, mapa c
 ```{r Correlogram dla zmiennych ilościowych}
 library(GGally)
 
-ggpairs(numerical, title="Correlogram of numerical features")
+ggpairs(numerical, title = "Correlogram of numerical features")
 ```
 
-Trochę inny wykres od 'ggcorrplot(corr, method = "circle")' ale prowadzący do tych samych wniosków: dodatnia korelacja wzrostu z wagą i dodatnia korelacja wieku z zarobkami.
+Trochę inny wykres od 'ggcorrplot(corr, method = "circle")', ale prowadzący do tych samych wniosków: dodatnia korelacja wzrostu z wagą i dodatnia korelacja wieku z wydatkami.
 
 ```{r BoxPlot dla expenses}
 expenses <- df$expenses
 quantiles <- unname(quantile(expenses))
-boxplot(expenses, horizontal = TRUE, col="powderblue", outcol="red", main="BoxPlot for expenses")
+boxplot(expenses, horizontal = TRUE, col = "powderblue", outcol = "red", main = "BoxPlot for expenses")
 
-#linie pomocnicze
-abline(v = max(expenses), col="blue")
-abline(v = min(expenses), col="red")
-abline(v = median(expenses), col="green")
-result <- paste("50% of values are between ", round(quantiles[2], 2), " and ",round(quantiles[4], 2), "(black vertical lines)")
-mtext(result,3)
-abline(v=quantiles[4], col="black") #quantile 75%
-abline(v=quantiles[2], col="black") #quantile 25%
+
+result <- paste("50% of values are between ", round(quantiles[2], 2), " and ", round(quantiles[4], 2), "(black vertical lines)")
+mtext(result, 3)
+abline(v = quantiles[4], col = "black") #quantile 75%
+abline(v = quantiles[2], col = "black") #quantile 25%
 
 ```
 
@@ -184,22 +198,35 @@ abline(v=quantiles[2], col="black") #quantile 25%
 ```{r}
 library(ggplot2)
 
-ggplot(df, aes(x=number_of_kids))+ geom_bar() + labs(x = "Number_of_kids",
+ggplot(df, aes(x = number_of_kids)) +
+  geom_bar() +
+  labs(x = "Number_of_kids",
        y = "Frequency",
-       title  = "Persons by number of kids")
+       title = "Persons by number of kids")
 ```
 
 ```{r Dodatkowy wykres}
-ggplot(df, aes(x = expenses, y = gender, fill=stat(x))) +  geom_density_ridges_gradient()+
-labs(x = "Expenses",
+ggplot(df, aes(x = expenses, y = gender, fill = stat(x))) +
+  geom_density_ridges_gradient() +
+  labs(x = "Expenses",
        y = "Gender",
-       title  = "Expenses by gender")
+       title = "Expenses by gender")
+```
+```{r Dodatkowy wykres}
+
+ggplot(df, aes(x = expenses, y = age, color = gender)) +
+  geom_point(alpha = 0.7) +
+  scale_size(range = c(1.4, 19)) +
+  scale_color_viridis(discrete = TRUE) +
+  theme_ipsum()
+
+
 ```
 **3.** **Policz p-wartości dla hipotez o wartości średniej m = 170 i medianie me = 165 (cm) dla
 zmiennej wzrost.** Wybierz statystykę testową dla alternatywy lewostronnej, podaj założenia, z
 jakich korzystałeś i skomentuj czy wydają Ci się uprawnione.
 
-Test dla wariancji: $t=\frac {\overline{X}-\mu}{\sigma}\dot.\sqrt{n}$, gdzie $\overline{X}$ - średnia próby, $n$ - liczba obserwacji, $\sigma$ - odchylenie standardowe
+Test dla wariancji: $t=\frac{\overline{X}-\mu}{\sigma}\dot.\sqrt{n}$, gdzie $\overline{X}$ - średnia próby, $n$ - liczba obserwacji, $\sigma$ - odchylenie standardowe
 
 Hipoteza zerowa H0: $\mu = 170$
 Hipoteza alternatywna H1: $\mu < 170$
@@ -211,29 +238,29 @@ me <- 165
 height <- df$height
 n <- length(height)
 
-test <- (mean(height)-m)/sd(height)*sqrt(n)
-def <- n-1
+test <- (mean(height) - m) / sd(height) * sqrt(n)
+def <- n - 1
 
 quantile <- qt(alpha, def) #left-tailed
 pval <- pt(test, def)
 
-x<- seq(-5, 5, by=0.01)
-t_dense <- dt(x, n-1)
+x <- seq(-5, 5, by = 0.01)
+t_dense <- dt(x, n - 1)
 
-plot(x, t_dense,type='l', xlab="x value",
-  ylab="Density", main="Student's density")
+plot(x, t_dense, type = 'l', xlab = "x value",
+     ylab = "Density", main = "Student's density")
 
-i<- x<=quantile
+i <- x <= quantile
 lines(x, t_dense)
 
-polygon(c(-5,quantile,x[i]), c(0,t_dense[i],0),col="blue")
-sprintf("test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", test, pval, quantile)
+polygon(c(-5, quantile, x[i]), c(0, t_dense[i], 0), col = "blue")
+sprintf("test statistic = %f , p-value = %f, confidence interval = [%f, infinity]", test, pval, quantile)
 area <- pt(quantile, def)
-result <- paste("quantile =", signif(area, digits=3))
-mtext(result,3)
-abline(v=test, col="red")
-abline(v=quantile, col="blue")
-if(alpha > pval) {
+result <- paste("quantile =", signif(area, digits = 3))
+mtext(result, 3)
+abline(v = test, col = "red")
+abline(v = quantile, col = "blue")
+if (alpha > pval) {
   print("H0 rejected.")
 }else {
   print("There is not enough evidence to reject H_0")
@@ -243,11 +270,70 @@ if(alpha > pval) {
 ```
 ```{r}
 #sprawdźmy
-t.test(height, mu=m)
+t.test(height, mu = m)
 ```
+Test Wilcoxona:
 
+Hipoteza zerowa H0: $m = 165$
+Hipoteza alternatywna H1: $m < 165$
 ```{r Testowanie hipotezy dla mediany}
-#tu wpisać test dla mediany
+
+heightFrame <- as.data.frame(t(height))
+rep <- as.data.frame(t(rep(165, length(height))))
+heightFrame <- rbind(heightFrame, heightFrame - rep) #differences between 165
+#heightFrame <- rbind(heightFrame, sign(heightFrame - rep))
+heightFrame <- rbind(heightFrame, abs(heightFrame[2,]))
+
+vec <- as.numeric(heightFrame[3,])
+heightFrame <- rbind(heightFrame, rank(vec))
+
+if (sum(heightFrame[2,] == 0) == 0) {
+  n <- length(vec)
+  posRanks <- sum(heightFrame[4, heightFrame[2,] > 0])
+  negRanks <- sum(heightFrame[4, heightFrame[2,] < 0])
+  if (posRanks + negRanks == n * (n+1)/2) {
+    W <- min(posRanks, negRanks)
+    m <- n * (n + 1) / 4
+    sd <- n * (n + 1) * (2 * n + 1) / 24
+    un <- as.numeric(heightFrame[4,])
+    t <- length(un[un %in% un[duplicated(un)]]) # = 0
+    tiedRanks <- (t^3 - t) / 48 # =0
+    zscore <- (W - m) / sqrt(sd - tiedRanks)
+  }
+}
+quantile <- qnorm(alpha)
+pval <- pnorm(zscore)
+
+x <- seq(-5, 5, by = 0.01)
+density <- dnorm(x)
+
+plot(x, density, type = 'l', xlab = "x value",
+     ylab = "Density", main = "Gaussian density")
+
+i <- x <= quantile
+lines(x, density)
+
+polygon(c(-5, quantile, x[i]), c(0, density[i], 0), col = "blue")
+sprintf("test statistic = %f , p-value = %f, confidece interval = [%f, infinity]", zscore, pval, quantile)
+area <- pnorm(quantile)
+result <- paste("quantile =", signif(area, digits = 3))
+mtext(result, 3)
+abline(v = zscore, col = "red")
+abline(v = quantile, col = "blue")
+if (alpha > pval) {
+  print("H0 rejected.")
+}else {
+  print("There is not enough evidence to reject H_0")
+}
+
+```
+```{r}
+boxplot(height, horizontal = TRUE, col = "powderblue", outcol = "red", main = "BoxPlot for height")
+abline(v = 165)
+```
+```{r}
+wilcox.test(height, mu = 165, alternative = "less", correct = FALSE)
+
 ```
 **4.** **Policz dwustronne przedziały ufności na poziomie 0.99 dla zmiennej wiek dla
 następujących parametrów rozkładu:**
@@ -259,42 +345,46 @@ Podaj założenia, z jakich korzystałeś i skomentuj czy wydają Ci się uprawn
 $\left(\bar{X} - \frac {t(1-\alpha/2, n-1)}{\sqrt{n}}\hat{S}, \bar{X} + \frac{t(1-\alpha/2, n-1)}{\sqrt{n}}\hat{S}\right)$
 gdzie $\bar{X}$ to średnia, $\hat{S}$ to pierwiastek z *nieobciążonego* estymatora wariancji, a $t(1-\alpha/2, n-1)$ to kwantyl na poziomie $1-\alpha/2$ dla rozkładu t Studenta o $n-1$ stopniach swobody.\
 **Asymptotyczny przedział ufności**:\
-$\left( \bar{X} - \frac {q(1-\alpha/2)}{\sqrt{n}}\hat{S}, \bar{X} + \frac{q(1-\alpha/2)}{\sqrt{n}}\hat{S} \right)$
+$\left( \bar{X} - \frac{q(1-\alpha/2)}{\sqrt{n}}\hat{S}, \bar{X} + \frac{q(1-\alpha/2)}{\sqrt{n}}\hat{S} \right)$
 gdzie $q(1-\alpha/2)$ jest kwantylem na poziomie $1 - \alpha/2$ ze standardowego rozkładu normalnego.\
 ```{r Sprawdzanie czy age ma rozkład normalny}
 alpha <- 0.01
 #ocena czy zmienna age ma rozkład normalny
 age <- df$age
 qqPlot(df$age)
-n<- length(age)
+n <- length(age)
 
 ```
 
 ```{r Dwustronne przedziały ufności na poziomie 0.99 dla zmiennej age - studentyzowane, asymptotyczne}
 
-rightstud <-  mean(age) + 1/sqrt(n-1)*sd(age)*qt(1-alpha/2, (n-1))
-leftstud <-  mean(age) - 1/sqrt(n-1)*sd(age)*qt(1-alpha/2, (n-1))
+rightstud <- mean(age) + 1 / sqrt(n - 1) *
+  sd(age) *
+  qt(1 - alpha / 2, (n - 1))
+leftstud <- mean(age) - 1 / sqrt(n - 1) *
+  sd(age) *
+  qt(1 - alpha / 2, (n - 1))
 
-rightasympt <- mean(age) + (qnorm(1-alpha/2))/sqrt(n-1)*sd(age)
-leftasympt <- mean(age) - (qnorm(1-alpha/2))/sqrt(n-1)*sd(age)
+rightasympt <- mean(age) + (qnorm(1 - alpha / 2)) / sqrt(n - 1) * sd(age)
+leftasympt <- mean(age) - (qnorm(1 - alpha / 2)) / sqrt(n - 1) * sd(age)
 
 sprintf("(%f, %f)", leftstud, rightstud)
-sprintf("(%f, %f)",leftasympt, rightasympt)
+sprintf("(%f, %f)", leftasympt, rightasympt)
 
 
-plot(density(age),type='l', xlab="x value", ylab="Density", main="Confidence intervals for df$age density")
+plot(density(age), type = 'l', xlab = "x value", ylab = "Density", main = "Confidence intervals for df$age density")
 
-abline(v=leftstud, col="red")
-abline(v=rightstud, col="red")
-abline(v=leftasympt, col="blue")
-abline(v=rightasympt, col="blue")
+abline(v = leftstud, col = "red")
+abline(v = rightstud, col = "red")
+abline(v = leftasympt, col = "blue")
+abline(v = rightasympt, col = "blue")
 
-legend(10,0.02,c("student","asympt"), lty = c(1,1), col=c('red','blue'),ncol=1)
+legend(10, 0.02, c("student", "asympt"), lty = c(1, 1), col = c('red', 'blue'), ncol = 1)
 ```
 ```{r Dwustronne przedziały ufności na poziomie 0.99 dla zmiennej age - kwantyle 1/4, 1/2, 3/4}
-lv <- levels(quantcut(age, probs=seq(0, 1, 1/4)))
+lv <- levels(quantcut(age, probs = seq(0, 1, 1 / 4)))
 lv
-plot(density(age),type='l', xlab="x value", ylab="Density", main="Confidence intervals for df$age density")
+plot(density(age), type = 'l', xlab = "x value", ylab = "Density", main = "Confidence intervals for df$age density")
 
 #jeszcze cos tu bedzie
 ```
@@ -331,9 +421,15 @@ Opisz wnioski. \
 Oszacuj model ze zbiorem zmiennych objaśniających pomniejszonym o wybraną zmienną.
 Sprawdź czy w otrzymanym przez Ciebie modelu spełnione są założenia modelu liniowego i
 przedstaw na wykresach diagnostycznych: wykresie zależności reszt od zmiennej objaśnianej,
-na wykresie reszt studentyzowanych i na wykresie dźwigni i przedyskutuj, czy są spełnione./
+na wykresie reszt studentyzowanych i na wykresie dźwigni i przedyskutuj, czy są spełnione.\
 ```{r}
 linear_regression <- lm(expenses ~ age + weight + height + gender + married + number_of_kids + pet, df)
 summary(linear_regression)
 ```
-~TBA
+```{r}
+par(mfrow = c(2, 2))
+plot(linear_regression, which = 1)
+plot(linear_regression$residuals)
+plot(ts(linear_regression$residuals))
+plot(linear_regression, which=5)
+```
