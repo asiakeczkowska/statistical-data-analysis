@@ -1,0 +1,806 @@
+---
+title: "Pierwszy projekt zaliczeniowy"
+subtitle: Statystyczna analiza danych 2020/2021
+author: Joanna Kęczkowska
+date: 26.04.2021
+output: html_notebook
+---
+
+Celem zadania jest statystyczna analiza danych znajdujących się w pliku people.tab.
+Dane: Są to dane symulowane; opisują wiek (zmienna age), wagę (weight), wzrost (height),
+płeć (gender), stan cywilny (married), liczbę dzieci (number_of_kids), posiadane zwierzę
+domowe (pet) oraz miesięczne wydatki (expenses) pewnych osób. We wszystkich zadaniach
+poniżej zmienna expenses jest zmienną objaśnianą (zależną), a pozostałe zmienne są
+zmiennymi objaśniającymi (niezależnymi).
+```{r include = FALSE}
+library(gtools)
+<<<<<<< HEAD
+=======
+library(car)
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+library(ggridges)
+library(ggplot2)
+library(viridis)
+library(hrbrthemes)
+library(networkD3)
+library(dplyr)
+library(plotly)
+library(rstatix)
+library(gridExtra)
+<<<<<<< HEAD
+library(car)
+library(ggpubr)
+library(ggcorrplot)
+library(GGally)
+library(mltools)
+library(data.table)
+=======
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+```
+**1.** **Wczytaj dane, obejrzyj je i podsumuj w dwóch-trzech zdaniach.** Pytania pomocnicze: ile
+jest obserwacji, ile zmiennych ilościowych, a ile jakościowych? Czy są zależności w zmiennych
+objaśniających (policz i zaprezentuj na wykresach korelacje pomiędzy zmiennymi ilościowymi, a
+także zbadaj zależność zmiennych jakościowych). Skomentuj wyniki. Czy występują jakieś braki
+danych?
+```{r Wczytywanie danych}
+df <- read.delim("peopletab.txt", header = TRUE, sep = '\t')
+sprintf("Dane zawierają %d obserwacji i %d cech", dim(df)[1], dim(df)[2])
+summary(df)
+```
+
+Dane zawierają **500 obserwacji**. \
+**Zmienne ilościowe**: 'age', 'weight', 'height', 'expenses'. \
+**Zmienne jakościowe**: 'gender', 'married', 'pet', 'number_of_kids'. \ Niepokojące są ujemne wartości w cesze 'expanses', jak również factor 'other' w cesze 'gender'. Wartość 'none' w cesze 'pet' interpretuję jako nieposiadanie zwierzęcia. W zmiennej 'gender' interpretuję factor 'other' jako brak informacji - 38 braków. \
+
+**Faktoryzacja zmiennych jakościowych**:
+```{r Faktoryzacja zmiennych jakościowych}
+df$gender <- factor(df$gender)
+df$pet <- factor(df$pet)
+df$married <- factor(df$married)
+df$number_of_kids <- factor(df$number_of_kids)
+summary(df)
+```
+### Korelacja zmiennych ilościowych
+Współczynnik korelacji r jest liczbą pomiędzy –1 i 1, która określa, w jakim stopniu dwie zmienne są współzależne.
+Wartość r = 0 oznacza, że nie ma żadnego powiązania, a wartość 1 lub –1
+oznacza idealne powiązanie. Znak współczynnika korelacji wskazuje, czy zmienne są skorelowane
+dodatnio (większe wartości w jednej zmiennej pokrywają się z większymi wartościami w drugiej), czy
+też ujemnie (większe wartości w jednej zmiennej pokrywają się z mniejszymi wartościami w drugiej).
+```{r Korelacja zmiennych ilościowych, warning = FALSE}
+library(ggcorrplot)
+numerical <- df[c("expenses", "height", "weight", "age")]
+categorial <- df[c("married", "gender", "pet", "number_of_kids")]
+
+corr <- round(cor(numerical), 2)
+
+ggcorrplot(corr, method = "circle")
+
+```
+Zgodnie z intuicją **wiek jest dodatnio skorelowany z wydatkami** i **wzrost jest dodatnio skorelowany z wagą**.
+<<<<<<< HEAD
+
+### Korelacja zmiennych jakościowych
+
+```{r Wykresy dla zmiennych jakościowych}
+p1 <- ggplot(df, aes(fill=gender, x=pet)) + geom_bar(position="stack")
+p2 <- ggplot(df, aes(fill=gender, x=married)) + geom_bar(position="stack")
+p3 <- ggplot(df, aes(fill=married, x=pet)) + geom_bar(position="stack")
+p4 <- ggplot(df, aes(fill=married, x=number_of_kids)) + geom_bar(position="stack")
+p5 <- ggplot(df, aes(fill=number_of_kids, x=pet)) + geom_bar(position="stack")
+p6 <- ggplot(df, aes(fill=gender, x=number_of_kids)) + geom_bar(position="stack")
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow=3)
+=======
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+
+
+```
+
+**Liczba dzieci zależy od małżeństwa**(rząd 2 kolumna 2). W innych nie widać istotnych korelacji, ale można dla pewności przeprowadzić test: \
+
+Dla danej komórki wartość oczekiwana: $e = \frac{row.sum*col.sum}{grand.total}$ \
+Chi-square statistic: ${\chi}^2 = \sum \frac{(o-e)^2}{e}$, gdzie o - obserwacja, e - wartość oczekiwana \
+
+Hipoteza zerowa $H_0$: Zmienne są **niezależne**.\
+Hipoteza alternatywna $H_1$: Zmienne są **zależne**.\
+```{r Korelacja zmiennych jakościowych}
+
+#funkcja do testowania korelacji zmiennych jakościowych
+#przyjmuje dwie kolumny zmiennych kategorycznych, które zamienia na tablicę wielodzielczą
+
+testchi <- function(feature1, feature2, sq = 20, t, alpha = 0.05) {
+  TAB <- table(feature1, feature2)
+  total <- sum(TAB)
+
+  n <- nlevels(feature1)
+  m <- nlevels(feature2)
+
+  sumRows <- margin.table(TAB, 1) #rows
+  sumCols <- margin.table(TAB, 2) #columns
+
+  sumRows <- as.vector(sumRows)
+  sumCols <- as.vector(sumCols)
+
+  exp <- matrix(rep(0, n * m), nrow = n, ncol = m)
+  exp[] <- 0L
+  for (i in 1:n) {
+    exp[i,] <- sumRows[i] * sumCols / total
+  }
+
+  Tab <- data.frame(TAB)
+  obs <- matrix(Tab[["Freq"]], nrow = n, ncol = m)
+
+  chi_sq <- sum((obs - exp)^2 / exp) #test statistic
+  df <- (nrow(obs) - 1) * (ncol(obs) - 1) #deg of freedom
+  pval <- pchisq(chi_sq, df, lower.tail = FALSE)  #right-tailed
+
+  quantile <- qchisq(alpha, df, lower.tail = FALSE) #quantile of chi-square distribution
+
+  x <- seq(0, sq, by = 0.1)
+  chi_dense <- dchisq(x, df)
+
+  plot(x, chi_dense, type = 'l', xlab = "x value",
+       ylab = "Density", main = "Chi-square density")
+
+  i <- x >= quantile
+  lines(x, chi_dense)
+  polygon(c(quantile, x[i], sq), c(0, chi_dense[i], 0), col = "blue")
+
+  area <- pchisq(quantile, df, lower.tail = TRUE)
+  result <- paste("quantile =", signif(area, digits = 3), " ", t)
+  mtext(result, 3)
+  abline(v = chi_sq, col = "red")
+  abline(v = quantile, col = "blue")
+
+  c <- list(chi_sq, pval, quantile)
+  return(c)
+
+}
+par(mfrow = c(3, 2))
+gp <- testchi(df$gender, df$pet, t = "GENDER/PET")
+gm <- testchi(df$gender, df$married, t = "GENDER/MARRIED")
+pm <- testchi(df$pet, df$married, t = "PET/MARRIED")
+nm <- testchi(df$number_of_kids, df$married, sq = 210, t = "KIDS/MARRIED")
+np <- testchi(df$number_of_kids, df$pet, t = "KIDS/PET", sq = 50)
+gn <- testchi(df$gender, df$number_of_kids, t = "GENDER/KIDS", sq = 30)
+sprintf("GENDER/PET, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gp[[1]], gp[[2]], gp[[3]])
+sprintf("GENDER/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gm[[1]], gm[[2]], gm[[3]])
+sprintf("PET/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", pm[[1]], pm[[2]], pm[[3]])
+sprintf("KIDS/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", nm[[1]], nm[[2]], nm[[3]])
+sprintf("KIDS/PET, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", np[[1]], np[[2]], np[[3]])
+sprintf("GENDER/KIDS, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", gn[[1]], gn[[2]], gn[[3]])
+
+```
+<<<<<<< HEAD
+Czerwoną linią zaznaczono test statystyczny, niebieską kwantyl na poziomie istotności 5%, a niebieski obszar to obszar krytyczny.\
+Jedyne dwie skorelowane zmienne jakościowe to 'number_of_kids' i 'married' - statystyka testowa wpada do obszaru krytycznego (wykres 2 rząd 2 kolumna). W przypadku pozostałych par zmiennych nie mamy podstawy do odrzucenia hipotezy zerowej. Żadne dwie inne zmienne nie są skorelowane. \
+=======
+
+```{r}
+p1 <- ggplot(df, aes(fill=gender, x=pet)) + geom_bar(position="stack")
+p2 <- ggplot(df, aes(fill=gender, x=married)) + geom_bar(position="stack")
+p3 <- ggplot(df, aes(fill=married, x=pet)) + geom_bar(position="stack")
+p4 <- ggplot(df, aes(fill=married, x=number_of_kids)) + geom_bar(position="stack")
+p5 <- ggplot(df, aes(fill=number_of_kids, x=pet)) + geom_bar(position="stack")
+p6 <- ggplot(df, aes(fill=gender, x=number_of_kids)) + geom_bar(position="stack")
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow=3)
+
+
+```
+Jedyne dwie skorelowane zmienne jakościowe to 'number_of_kids' i 'married' - statystyka testowa wpada do obszaru krytycznego. W przypadku pozostałych par zmiennych nie mamy podstawy do odrzucenia hipotezy zerowej. Żadne dwie inne zmienne nie wydają się być skorelowane. \
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+
+
+**2.** **Podsumuj dane przynajmniej trzema różnymi wykresami.** Należy przygotować:
+**a)** wykres typu scatter-plot (taki jak na wykładzie 6, slajd 3) dla wszystkich zmiennych
+objaśniających ilościowych i zmiennej objaśnianej.
+**b)** Wykresy typu pudełkowy (boxplot) dla jednej wybranej zmiennej ilościowej.
+**c)** Wykres typu słupkowy (barplot) dla jednej wybranej zmiennej jakościowej.
+Dodatkowe wykresy wg własnej inwencji (np. histogram, punktowy, liniowy, mapa ciepła...).\
+
+**Scatter-plot dla wszystkich zmiennych ilościowych:**
+```{r Correlogram dla zmiennych ilościowych}
+library(GGally)
+
+ggpairs(numerical, title = "Correlogram of numerical features")
+```
+
+<<<<<<< HEAD
+Trochę inny wykres od 'ggcorrplot(corr, method = "circle")', ale prowadzący do tych samych wniosków: dodatnia korelacja wzrostu z wagą (0.67) i dodatnia korelacja wieku z wydatkami (0.893).\
+**BoxPlot dla zmiennej 'epxenses'**:
+=======
+Trochę inny wykres od 'ggcorrplot(corr, method = "circle")', ale prowadzący do tych samych wniosków: dodatnia korelacja wzrostu z wagą i dodatnia korelacja wieku z wydatkami.
+
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+```{r BoxPlot dla expenses}
+expenses <- df$expenses
+quantiles <- unname(quantile(expenses))
+boxplot(expenses, horizontal = TRUE, col = "powderblue", outcol = "red", main = "BoxPlot for expenses")
+<<<<<<< HEAD
+=======
+
+
+result <- paste("50% of values are between ", round(quantiles[2], 2), " and ", round(quantiles[4], 2), "(black vertical lines)")
+mtext(result, 3)
+abline(v = quantiles[4], col = "black") #quantile 75%
+abline(v = quantiles[2], col = "black") #quantile 25%
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+
+
+result <- paste("50% of values are between ", round(quantiles[2], 2), " and ", round(quantiles[4], 2), "(black vertical lines)")
+mtext(result, 3)
+abline(v = quantiles[4], col = "black") #quantile 75%
+abline(v = quantiles[2], col = "black") #quantile 25%
+abline(v = median(expenses), col="blue") #median
+sprintf("Kwantyl 3/4: %f, kwantyl 1/4: %f, mediana: %f", quantiles[4], quantiles[2], median(expenses))
+
+```
+Obserwacje odstające zaznaczono na czerwono.\
+ **Rozkład zmiennej 'number_of_kids'**:
+```{r Wykres słupkowy dla number_of_kids}
+library(ggplot2)
+
+ggplot(df, aes(x = number_of_kids)) +
+  geom_bar() +
+  labs(x = "Number_of_kids",
+       y = "Frequency",
+       title = "Persons by number of kids")
+```
+
+<<<<<<< HEAD
+** Wykres punktowy dla zmiennej 'expenses' **:
+```{r Dodatkowy wykres - wykres punktowy}
+
+ggplot(df, aes(x = expenses, y = age, color = gender)) +
+  geom_point(alpha = 0.7) +
+  scale_size(range = c(1.4, 19)) +
+  scale_color_viridis(discrete = TRUE) +
+  theme_ipsum()
+
+
+```
+Wykres punktowy zmiennej 'expenses' w zależności od 'age' z zaznaczoną kolorem 'gender'.
+
+```{r Dodatkowy wykres - height dla kobiet i mężczyzn}
+hW <- df[df$gender=="woman",]$height
+hM <- df[df$gender=="man",]$height
+ggplot(df, aes(x = height, y = gender, fill = stat(x))) +
+  geom_density_ridges_gradient() +
+  labs(x = "Height",
+       y = "Gender",
+       title = "Height by gender")
+=======
+```{r Dodatkowy wykres}
+ggplot(df, aes(x = expenses, y = gender, fill = stat(x))) +
+  geom_density_ridges_gradient() +
+  labs(x = "Expenses",
+       y = "Gender",
+       title = "Expenses by gender")
+```
+```{r Dodatkowy wykres}
+
+ggplot(df, aes(x = expenses, y = age, color = gender)) +
+  geom_point(alpha = 0.7) +
+  scale_size(range = c(1.4, 19)) +
+  scale_color_viridis(discrete = TRUE) +
+  theme_ipsum()
+
+
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+```
+
+**3.** **Policz p-wartości dla hipotez o wartości średniej m = 170 i medianie me = 165 (cm) dla
+zmiennej wzrost.** Wybierz statystykę testową dla alternatywy lewostronnej, **podaj założenia**, z
+jakich korzystałeś i skomentuj czy wydają Ci się uprawnione.
+
+<<<<<<< HEAD
+Jednopróbkowy test t: $t=\frac{\overline{X}-\mu}{\sigma}\dot.\sqrt{n}$, gdzie $\overline{X}$ - średnia próby, $n$ - liczba obserwacji, $\sigma$ - odchylenie standardowe
+=======
+Test dla wariancji: $t=\frac{\overline{X}-\mu}{\sigma}\dot.\sqrt{n}$, gdzie $\overline{X}$ - średnia próby, $n$ - liczba obserwacji, $\sigma$ - odchylenie standardowe
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+
+Hipoteza zerowa H0: $\mu = 170$
+Hipoteza alternatywna H1: $\mu < 170$ (alternatywa lewostronna)
+Założenia: (zmienna ilościowa, rozkład normalny próby, niezależne obserwacje)
+```{r Założenia dla testu}
+qqPlot(df$height)
+shaptest <- shapiro.test(df$height)
+```
+P-value jest większe niż 10% co w połączeniu z analizą wykresu qqPlot() implikuje, że zmienna nie różni się istotnie od rozkładu normalnego. Innymi słowy możemy założyć rozkład normalny. Oczywiście obserwacje są niezależne - jedna obserwacja nie dostarcza informacji o drugiej - obserwacje to różne osoby.
+```{r Testowanie hipotezy dla wartości średniej}
+
+alpha <- 0.05
+m <- 170
+me <- 165
+height <- df$height
+n <- length(height)
+
+test <- (mean(height) - m) / sd(height) * sqrt(n)
+def <- n - 1
+
+quantile <- qt(alpha, def) #left-tailed
+pval <- pt(test, def)
+
+x <- seq(-5, 5, by = 0.01)
+t_dense <- dt(x, n - 1)
+
+plot(x, t_dense, type = 'l', xlab = "x value",
+     ylab = "Density", main = "Student's density")
+
+i <- x <= quantile
+lines(x, t_dense)
+
+polygon(c(-5, quantile, x[i]), c(0, t_dense[i], 0), col = "blue")
+sprintf("test statistic = %f , p-value = %f, confidence interval = [%f, infinity]", test, pval, quantile)
+area <- pt(quantile, def)
+result <- paste("quantile =", signif(area, digits = 3))
+mtext(result, 3)
+abline(v = test, col = "red")
+abline(v = quantile, col = "blue")
+if (alpha > pval) {
+  print("H0 rejected.")
+}else {
+  print("There is not enough evidence to reject H_0")
+}
+
+
+```
+<<<<<<< HEAD
+Statystyka testowa (czerwona linia) wpada do obszaru krytycznego (zaznaczonego na niebiesko) dlatego odrzucamy hipotezę zerową na rzecz alternatywnej, czyli $\mu < 170$.\
+
+Test Wilcoxona dla mediany: \
+
+Hipoteza zerowa $H_0$: $m = 165$ \
+Hipoteza alternatywna $H_1$: $m < 165$ (alternatywa lewostronna)
+Założenia: (zmienna ilościowa, niezależne obserwacje)
+=======
+```{r}
+#sprawdźmy
+t.test(height, mu = m)
+```
+Test Wilcoxona:
+
+Hipoteza zerowa H0: $m = 165$
+Hipoteza alternatywna H1: $m < 165$
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+```{r Testowanie hipotezy dla mediany}
+
+heightFrame <- as.data.frame(t(height))
+rep <- as.data.frame(t(rep(165, length(height))))
+heightFrame <- rbind(heightFrame, heightFrame - rep) #differences between 165
+#heightFrame <- rbind(heightFrame, sign(heightFrame - rep))
+heightFrame <- rbind(heightFrame, abs(heightFrame[2,]))
+
+vec <- as.numeric(heightFrame[3,])
+heightFrame <- rbind(heightFrame, rank(vec))
+
+if (sum(heightFrame[2,] == 0) == 0) {
+  n <- length(vec)
+  posRanks <- sum(heightFrame[4, heightFrame[2,] > 0])
+  negRanks <- sum(heightFrame[4, heightFrame[2,] < 0])
+  if (posRanks + negRanks == n * (n+1)/2) {
+    W <- min(posRanks, negRanks)
+    m <- n * (n + 1) / 4
+    sd <- n * (n + 1) * (2 * n + 1) / 24
+    un <- as.numeric(heightFrame[4,])
+    t <- length(un[un %in% un[duplicated(un)]]) # = 0
+<<<<<<< HEAD
+    tiedRanks <- (t^3 - t) / 48 # = 0
+=======
+    tiedRanks <- (t^3 - t) / 48 # =0
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+    zscore <- (W - m) / sqrt(sd - tiedRanks)
+  }
+}
+quantile <- qnorm(alpha)
+pval <- pnorm(zscore)
+
+x <- seq(-5, 5, by = 0.01)
+density <- dnorm(x)
+
+plot(x, density, type = 'l', xlab = "x value",
+     ylab = "Density", main = "Gaussian density")
+
+i <- x <= quantile
+lines(x, density)
+
+polygon(c(-5, quantile, x[i]), c(0, density[i], 0), col = "blue")
+sprintf("test statistic = %f , p-value = %f, confidece interval = [%f, infinity]", zscore, pval, quantile)
+area <- pnorm(quantile)
+result <- paste("quantile =", signif(area, digits = 3))
+mtext(result, 3)
+abline(v = zscore, col = "red")
+abline(v = quantile, col = "blue")
+if (alpha > pval) {
+  print("H0 rejected.")
+}else {
+  print("There is not enough evidence to reject H_0")
+}
+
+```
+<<<<<<< HEAD
+Odrzucamy hipotezę zerową - statystyka testowa wpada do obszaru krytycznego (wykres) - na rzecz hipotezy alternatywnej, czyli $m < 165$.
+
+```{r}
+boxplot(height, horizontal = TRUE, col = "powderblue", outcol = "red", main = "BoxPlot for height")
+abline(v = 165)
+=======
+```{r}
+boxplot(height, horizontal = TRUE, col = "powderblue", outcol = "red", main = "BoxPlot for height")
+abline(v = 165)
+```
+```{r}
+wilcox.test(height, mu = 165, alternative = "less", correct = FALSE)
+
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+```
+**4.** **Policz dwustronne przedziały ufności na poziomie 0.99 dla zmiennej wiek dla
+następujących parametrów rozkładu:**\
+1. średnia i odchylenie standardowe;\
+2. kwantyle 1/4, 2/4 i 3/4.\
+Podaj założenia, z jakich korzystałeś i skomentuj czy wydają Ci się uprawnione.\
+
+**Studentyzowany przedział ufności**:\
+$\left(\bar{X} - \frac {t(1-\alpha/2, n-1)}{\sqrt{n}}\hat{S}, \bar{X} + \frac{t(1-\alpha/2, n-1)}{\sqrt{n}}\hat{S}\right)$
+gdzie $\bar{X}$ to średnia, $\hat{S}$ to pierwiastek z *nieobciążonego* estymatora wariancji, a $t(1-\alpha/2, n-1)$ to kwantyl na poziomie $1-\alpha/2$ dla rozkładu t Studenta o $n-1$ stopniach swobody.\
+**Asymptotyczny przedział ufności**:\
+$\left( \bar{X} - \frac{q(1-\alpha/2)}{\sqrt{n}}\hat{S}, \bar{X} + \frac{q(1-\alpha/2)}{\sqrt{n}}\hat{S} \right)$
+gdzie $q(1-\alpha/2)$ jest kwantylem na poziomie $1 - \alpha/2$ ze standardowego rozkładu normalnego.\
+Założenia: (rozkład normalny)
+```{r Sprawdzanie czy age ma rozkład normalny}
+alpha <- 0.01
+#ocena czy zmienna age ma rozkład normalny
+age <- df$age
+<<<<<<< HEAD
+qqPlot(age)
+n <- length(age)
+shapiro.test(age)
+=======
+qqPlot(df$age)
+n <- length(age)
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+
+```
+P-value 0.0163325 jest większe niż 1% co w połączeniu z analizą wykresu qqPlot() implikuje, że zmienna nie różni się istotnie od rozkładu normalnego. Innymi słowy możemy założyć rozkład normalny zmiennej age.
+
+```{r Dwustronne przedziały ufności na poziomie 0.99 dla zmiennej age - studentyzowane, asymptotyczne}
+
+<<<<<<< HEAD
+rightstud <- mean(age) + 1 / sqrt(n) *
+  sd(age) *
+  qt(1 - alpha / 2, (n - 1))
+leftstud <- mean(age) - 1 / sqrt(n) *
+  sd(age) *
+  qt(1 - alpha / 2, (n - 1))
+=======
+rightstud <- mean(age) + 1 / sqrt(n - 1) *
+  sd(age) *
+  qt(1 - alpha / 2, (n - 1))
+leftstud <- mean(age) - 1 / sqrt(n - 1) *
+  sd(age) *
+  qt(1 - alpha / 2, (n - 1))
+
+rightasympt <- mean(age) + (qnorm(1 - alpha / 2)) / sqrt(n - 1) * sd(age)
+leftasympt <- mean(age) - (qnorm(1 - alpha / 2)) / sqrt(n - 1) * sd(age)
+
+sprintf("(%f, %f)", leftstud, rightstud)
+sprintf("(%f, %f)", leftasympt, rightasympt)
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+
+rightasympt <- mean(age) + (qnorm(1 - alpha / 2)) / sqrt(n) * sd(age)
+leftasympt <- mean(age) - (qnorm(1 - alpha / 2)) / sqrt(n) * sd(age)
+
+<<<<<<< HEAD
+sprintf("Studentyzowany: (%f, %f)", leftstud, rightstud)
+sprintf("Asymptotyczny: (%f, %f)", leftasympt, rightasympt)
+=======
+plot(density(age), type = 'l', xlab = "x value", ylab = "Density", main = "Confidence intervals for df$age density")
+
+abline(v = leftstud, col = "red")
+abline(v = rightstud, col = "red")
+abline(v = leftasympt, col = "blue")
+abline(v = rightasympt, col = "blue")
+
+legend(10, 0.02, c("student", "asympt"), lty = c(1, 1), col = c('red', 'blue'), ncol = 1)
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+```
+```{r Dwustronne przedziały ufności na poziomie 0.99 dla zmiennej age - kwantyle 1/4, 1/2, 3/4}
+lv <- levels(quantcut(age, probs = seq(0, 1, 1 / 4)))
+lv
+<<<<<<< HEAD
+=======
+plot(density(age), type = 'l', xlab = "x value", ylab = "Density", main = "Confidence intervals for df$age density")
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+
+```
+**5.** **Przetestuj na poziomie istotności 0.01 trzy hipotezy istotności:** \
+1. różnicy między średnią wartością wybranej zmiennej dla kobiet i dla mężczyzn; \
+2. zależności między dwiema zmiennymi ilościowymi; \
+3. zależności między dwiema zmiennymi jakościowymi. \
+
+**Ponadto**, \
+4. przetestuj hipotezę o zgodności z konkretnym rozkładem parametrycznym dla
+wybranej zmiennej (np. "zmienna A ma rozkład wykładniczy z parametrem 10").
+Podaj założenia, z jakich korzystałeś i skomentuj czy wydają Ci się uprawnione.
+
+### Różnica między średnią wartością wzrostu dla kobiet i dla mężczyzn
+Test t dla prób niezależnych: $t = \frac{\overline{X}-\overline{Y}}{\sqrt{\frac{s_X^2}{n_X}+\frac{s_Y^2}{n_Y}}}$, gdzie $\overline{X}$, $\overline{Y}$ - średnie arytmetyczne, $s_X^2$, $s_Y^2$ - nieobciążone estymatory wariancji, $n_X$, $n_Y$ - liczby obserwacji
+
+Hipoteza zerowa $H_0$: Średni wzrost dla kobiet nie różni się od średniego wzrostu dla mężczyzn. \
+Hipoteza alternatywna $H_1$: Średni wzrost dla różnych płci różni się.\
+
+Jedyne założenie do sprawdzenia: czy próby pochodzą z rozkładu normalnego.
+```{r Różnica między średnią wartością wybranej zmiennej dla kobiet i dla mężczyzn}
+hW <- df[df$gender=="woman",]$height
+hM <- df[df$gender=="man",]$height
+par(mfrow=c(2, 1))
+qqPlot(hW)
+qqPlot(hM)
+shapiro.test(hW)
+shapiro.test(hM)
+```
+
+P-value dla obu grup jest większe niż 10%, więc możemy założyć, że obie grupy dla zmiennej height mają rozkład normalny.
+```{r}
+n <- length(hM)
+m <- length(hW)
+alpha <- 0.01
+#unbiased variance estimators
+unbiased_estX <- 1/(n-1)*sum((hM-mean(hM))^2)
+unbiased_estY <- 1/(m-1)*sum((hW-mean(hW))^2)
+
+a <- unbiased_estX/n + unbiased_estY/m
+t <- (mean(hM) - mean(hW))/sqrt(a) #test statistic
+
+def <- a^2/(1/(n-1)*(unbiased_estX/n)^2+1/(m-1)*(unbiased_estY/m)^2) #deg of freedom
+
+#two-tailed hypothesis
+pval <- 2*pt(t, n+m-2, lower.tail = FALSE)
+
+#confidence interval
+lowerBound <- qt(alpha/2, n+m-2)
+upperBound <- qt(1-alpha/2, n+m-2)
+
+if(alpha > pval) {
+  print("H0 rejected.")
+}else {
+  print("There is not enough evidence to reject H_0")
+}
+sprintf("test statistic = %f , p-value=%f, confidence interval = (%f, %f)", t, pval, lowerBound, upperBound)
+
+x <- seq(-3, 3, by = 0.01)
+t_dense <- dt(x, n+m-2)
+
+plot(x, t_dense,type='l', xlab="x value",
+  ylab="Density", main="Student's density")
+
+i <- x >= lowerBound & x <= upperBound
+lines(x, t_dense)
+
+polygon(x = c(-3, seq(-3, lowerBound, 0.01), lowerBound),
+        y = c(0, dt(seq(-3, lowerBound, 0.01),n+m-2), 0),
+        col = 'blue')
+
+polygon(x = c(upperBound, seq(upperBound, 3, 0.01), 3),
+        y = c(0, dt(seq(upperBound, 3, 0.01), n+m-2), 0),
+        col = 'blue')
+
+area <- pt(upperBound, n+m-2) - pt(lowerBound, n+m-2)
+abline(v=t, col="red")
+abline(v=lowerBound, col="blue")
+abline(v=upperBound, col="blue")
+```
+Nie ma powodów do odrzucenia hipotezy zerowej - statystyka testowa nie wpada do obszaru krytycznego. Średni wzrost dla kobiet nie różni się od średniego wzrostu dla mężczyzn.
+### Zależność między dwiema zmiennymi ilościowymi.
+
+Współczynnik korelacji Pearsona: (posłużę się gotową implementacją)
+
+Hipoteza zerowa $H_0$: Zmienne nie są skorelowane $\rho=0$.
+Hipoteza alternatywna $H_1$: Zmienne są skorelowane $\rho \neq 0$.
+Założenia: (zmienne mają rozkład normalny, zależność liniowa między zmiennymi)
+```{r  Zależność między weight i height}
+weight <- df$weight
+height <- df$height
+
+alpha <- 0.01
+
+par(mfrow=c(2, 1))
+qqPlot(weight)
+qqPlot(height)
+shapiro.test(weight)
+shapiro.test(height)
+```
+Widzimy, że zmienne mają rozkład normalny (duże p-value z testu Shapiro-Wilka + wygląd wykresów qqPlot()).\
+**Scatterplot - zależność między zmiennymi**:
+```{r Liniowa kowariancja}
+p1 <- ggscatter(df, x = "weight", y = "height",
+          add = "reg.line", conf.int = TRUE,
+          cor.coef = TRUE, cor.method = "pearson", color="gender",
+          xlab = "Weight", ylab = "Height")
+p1
+```
+
+```{r}
+linearity_test <- lm(weight~height, df)
+plot(linearity_test, which=1)
+summary(linearity_test)
+```
+
+Liniowa zależność między zmiennymi weight i height - założenie spełnione.
+```{r Test}
+test <- cor.test(x=weight, y=height, method="pearson", alternative = "two.sided", conf.level = 1-alpha)
+sprintf("test statistic = %f , p-value=%f, confidence interval = (%f, %f), cor = %f", test$statistic, test$p.value, test$conf.int[1], test$conf.int[2], test$estimate)
+if (alpha > test$p.value) {
+  print("H0 rejected.")
+}else {
+  print("There is not enough evidence to reject H_0")
+}
+```
+P-value wynosi mniej niż ustalony poziom istotności 1% - odrzucamy hipotezę zerową. Możemy zatem wywnioskować, że zmienne weight i height **są istotnie skorelowane** co potwierdza wcześniejszy korelogram z pierwszego podpunktu.
+
+
+### Zależność między dwiema zmiennymi ilościowymi.
+Wykorzystam funkcję napisaną wcześniej.
+
+Hipoteza zerowa $H_0$: Zmienne są **niezależne**.\
+Hipoteza alternatywna $H_1$: Zmienne są **zależne**.\
+Założenia: zmienne wzajemnie się wykluczają - spełnione.
+```{r Zależność między married a number_of_kids}
+alpha <- 0.01
+g <- testchi(df$married, df$number_of_kids, sq=205, t='married/number_of_kids', alpha = alpha)
+sprintf("KIDS/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", g[[1]], g[[2]], g[[3]])
+```
+Odrzucamy hipotezę zerową, wartość statystyki testowej wpada do obszaru krytycznego. Zmienne married i number_of_kids są zależne.
+
+### Hipoteza o zgodności z konkretnym rozkładem parametrycznym
+Przeprowadzę test dla zmiennej number_of_kids.\
+Niech zmienna X ma rozkład Pascala z parametrami $p=0.7$ i $r=5$.
+Przyjmijmy jedną zmienną jako wartość oczekiwaną a drugą jako obserwację dla testu chi2.\
+Hipoteza zerowa $H_0$: Zmienne są niezależne.\
+Hipoteza alternatywna $H_1$: Zmienne **nie** są niezależne.\
+Założenia: zmienne wzajemnie się wykluczają - spełnione.
+```{r Zmienna expenses ma rozkład Pascala}
+kids <- df$number_of_kids
+x <- rnbinom(length(kids), 5, 0.7)
+x <- factor(x)
+yf <- testchi(kids, x, sq=150, t=' ', alpha=alpha)
+sprintf("KIDS/MARRIED, test statistic = %f , p-value = %f, confidece interval = [-infinity, %f]", yf[[1]], yf[[2]], yf[[3]])
+
+```
+
+Nie mamy podstaw by odrzucić hipotezę zerową, więc zmienne number_of_kids i X są niezależne, więc number_of_kids nie ma rozkładu Pascala z parametrami $p=0.7$ i $r=5$.
+
+**6.** **Oszacuj model regresji liniowej, przyjmując za zmienną zależną (y) wydatki domowe
+(expenses) a jako zmienne niezależne (x) przyjmując pozostałe zmienne.** \
+Rozważ, czy konieczne są transformacje zmiennych lub zmiennej objaśnianej. Podaj **RSS**, **R^2**, **p-wartości** i
+**oszacowania współczynników w pełnym modelu** (w modelu zawierającym wszystkie zmienne).
+Następnie wybierz jedną zmienną objaśniającą, którą można by z pełnego modelu odrzucić
+(która najgorzej tłumaczy expenses). Aby dokonać wyboru takiej zmiennej, dla każdej ze
+zmiennych objaśniających sprawdź: \
+- Jaką ma p-wartość w pełnym modelu? \
+- O ile zmniejsza się R^2, gdy ją usuniemy z pełnego modelu? \
+- O ile zwiększa się RSS, gdy ją usuniemy z pełnego modelu? \
+Opisz wnioski. \
+Oszacuj model ze zbiorem zmiennych objaśniających pomniejszonym o wybraną zmienną.
+Sprawdź czy w otrzymanym przez Ciebie modelu spełnione są założenia modelu liniowego i
+przedstaw na wykresach diagnostycznych: wykresie zależności reszt od zmiennej objaśnianej,
+na wykresie reszt studentyzowanych i na wykresie dźwigni i przedyskutuj, czy są spełnione.\
+<<<<<<< HEAD
+
+Do tego zadania konieczne będzie zamiana zmiennych kategorycznych funkcją factor()- zrobiłam to już wcześniej.  W przeciwnym wypadku te zmienne zostaną potraktowane przez funkcję lm() jako zmienne ilościowe. - zrobiłam to już wcześniej.
+=======
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+```{r}
+linear_regression <- lm(expenses ~ age + weight + height + gender + married + number_of_kids + pet, df)
+summary(linear_regression)
+```
+<<<<<<< HEAD
+Przedziały ufności:
+```{r}
+confint(linear_regression,level = 0.99)
+```
+
+**Regresja liniowa na pełnym modelu**:
+Oszacowania współczynników (Estimate)
+```{r}
+linear_regression$coefficients
+```
+Residual sum of squares (RSS):
+```{r}
+RSS <- sum(resid(linear_regression)^2)
+print(RSS)
+```
+Współczynnik determinacji (R^2):
+```{r}
+R2 <- summary(linear_regression)$r.squared
+print(round(R2, 3))
+```
+P-wartości w pełnym modelu dla zmiennych:
+```{r}
+summary(linear_regression)$coefficients[,4]
+```
+Variance inflation factor (VIF) - mierzy o ile wariancja oszacowanego współczynnika regresji jest zwiększona z powodu kolinearności. \
+
+Współczynnik VIF dla \hat{\beta_i}: \$VIF_i = \frac{1}{1-R_i^2}$, gdzie R_i^2 - współczynnik determinacji dla $X_i$
+```{r}
+vif(linear_regression)
+```
+```{r}
+mean(vif(linear_regression))
+```
+
+
+=======
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
+```{r}
+par(mfrow = c(2, 2))
+plot(linear_regression, which = 1)
+plot(linear_regression$residuals)
+plot(ts(linear_regression$residuals))
+plot(linear_regression, which=5)
+```
+<<<<<<< HEAD
+```{r}
+qqPlot(linear_regression$residuals)
+shapiro.test(linear_regression$residuals)
+```
+
+Funkcja lm() sama przekształciła zmienne kategoryczne. Jednak żeby usunąć, którąś z takich zakodowanych zmiennych należy wcześniej je samodzielnie zakodować. Funkcja one_hot() z biblioteki mltools przekształca zmienną kategoryczną metodą One-Hot Encoding bez odrzucania żadnych kolumn bazowych. Do modelu linear_regression2 nie wprowadzono poziomów gender_man, married_TRUE, number_of_kids0, pet_none - żeby nie wprowadzać zmiennych, które wiadomo, że będą skorelowane (wyżej funkcja lm() odrzuciła zmienne bazowe najczęściej występujące w zbiorze danych).
+```{r}
+df_ohe <- one_hot(as.data.table(df), dropUnusedLevels=TRUE) #cols DEFAULT = "auto" encodes all unordered factor columns
+head(df_ohe)
+linear_regression2 <- lm(expenses ~ age+weight+height+gender_other+gender_woman+married_FALSE+number_of_kids_6+number_of_kids_1+number_of_kids_2+number_of_kids_3+number_of_kids_4+number_of_kids_5+pet_cat+pet_dog+pet_ferret+pet_hedgehog, df_ohe)
+summary(linear_regression2)
+```
+Residual sum of squares (RSS):
+```{r}
+RSS <- sum(resid(linear_regression2)^2)
+print(RSS)
+```
+Współczynnik determinacji (R^2):
+```{r}
+R2 <- summary(linear_regression2)$r.squared
+print(round(R2, 3))
+```
+
+
+VIF:
+```{r}
+vif(linear_regression2)
+```
+Nie mamy zmiennych silnie skorelowanych, więc VIFy nie są bardzo duże.
+```{r}
+mean(vif(linear_regression2))
+```
+
+**O ile zmniejsza się R^2, gdy usuniemy zmienną z pełnego modelu?**\
+**O ile zwiększa się RSS, gdy usuniemy zmienną z pełnego modelu?**\
+```{r}
+cnames <- c("age", "weight", "height", "gender_other", "gender_woman", "married_FALSE", "number_of_kids_6", "number_of_kids_1", "number_of_kids_2", "number_of_kids_3", "number_of_kids_4", "number_of_kids_5", "pet_cat", "pet_dog", "pet_ferret", "pet_hedgehog")
+df_features <- df_ohe %>% select(cnames)
+rsq <- NULL
+rsss <- NULL
+i<-1
+for(c in cnames) {
+  fo <- as.formula(paste("expenses", "~.-", c))
+  r <- do.call("lm", list(fo, quote(df_features)))
+  rsq[i] <- summary(r)$r.squared
+  rsss[i] <- sum(resid(r)^2)
+  i <- i+1
+}
+
+R <- data.frame(cnames, rsq, rep(R2, length(cnames))-rsq, rsss, rsss-rep(RSS, length(cnames)))
+colnames(R) <- c("deleted_column", "R_2", "difference_R2", "RSS", "difference_RSS")
+R[order(R_2$difference_R2), ]
+
+```
+
+```{r}
+R[order(R_2$difference_RSS), ]
+```
+
+
+
+
+
+=======
+>>>>>>> 31a74e4cddbef2b884562efcea7e144dcda59c6c
