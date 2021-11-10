@@ -1,0 +1,407 @@
+---
+title: "Drugi projekt zaliczeniowy"
+subtitle: Statystyczna analiza danych 2020/2021
+author: Joanna Kęczkowska
+date: 10.06.2021
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+  html_notebook:
+    toc: true
+    toc_float: true
+    number_sections: true
+  md_document:
+    toc: true
+    toc_depth: 2
+    fig_width: 5
+    fig_height: 5
+    dev: jpeg
+editor_options:
+  chunk_output_type: inline
+---
+
+**Opis projektu** :
+
+i) Zbiór treningowy data.train zawiera, oprócz kolumn dla predyktorów, kolumnę Y
+oznaczającą działanie leku na nowotworowe linie komórkowe (zmienna o wartościach w
+przedziale [0,1]). Im niższa wartość Y, tym silniej lek działa na komórki danego typu raka
+(mniej komórek przeżywa po podaniu leku). Pozostałe kolumny to zmienne objaśniające
+(ekspresja genów w liniach komórkowych).
+ii) Zbiór testowy data.test nie ma zmiennej Y. Na nim należy zastosować nauczony
+model.
+
+**Cel**
+Wybrać najlepszy model danych tak aby błąd testowy był jak najmniejszy.
+**Zadania**
+Zadania należy rozwiązać w języku R. \
+
+```{r include = 'FALSE'}
+library(data.table)
+library(plotly)
+library(FactoMineR)
+library(factoextra)
+library(glmnet)
+library(randomForest)
+library(h2o4gpu)
+library(devtools)
+library(reticulate)
+library(foreach)
+library(doParallel)
+library(dplyr)
+library(vip)
+library(caret)
+library(MLmetrics)
+library(mlr)
+library(ggplot2)
+```
+
+# Wczytywanie danych
+
+
+Ładowanie danych dla grupy 2:
+```{r}
+load("C:/Users/Asia/SD/untitled2/statistical-data-analysis/second-project_files/Grupa2/Grupa2/cancer.RData", verbose = TRUE)
+```
+
+# Analiza zmiennych objaśniających
+
+**Zadanie 1** (Analiza zmiennych objaśniających) \
+**a)** Podsumuj, ile zmiennych jest jakiego typu? \
+**b)** Wybierz 500 kolumn o największej zmienności. \
+Policz korelację dla każdej z par tych kolumn. \
+Zilustruj poziom współliniowości między tymi wybranymi kolumnami, rysując
+wykres rozkładu policzonych korelacji (wynikiem tego punktu ma być jeden wykres
+geom_violin() w ggplot2).
+
+## Podsumowanie typów zmiennych
+```{r datatypes}
+data_types <- function(frame) {
+  res <- lapply(frame, class)
+  res_frame <- data.frame(unlist(res))
+  barplot(table(res_frame), main = "Data Types", col = "steelblue", ylab = "Number of Features")
+  return(res)
+}
+
+sprintf("Dane zawierają %d obserwacji i %d zmiennych objaśniających typu %s", dim(data.train)[1], dim(data.train)[2] - 1, unique(data_types(data.train)))
+```
+
+## Selekcja cech o największej zmienności
+
+Klasyczną miarą zmienności jest wariancja. Wyszukanie kierunków maksymalnej wariancji w wielowymiarowej przestrzeni umożliwia analiza głównych składowych (Principal component analysis). \
+Wcześniej należy dane przeskalować:
+```{r std }
+#standard score
+std <- scale(subset(data.train, select = -Y)) #without dependent variable Y
+```
+Otrzymaliśmy przeskalowany zbiór danych ze średnią równą $0$ i odchyleniem standardowym równym $1$. \  Przeprowadzamy analizę składowych głównych:
+
+```{r pca}
+pc <- prcomp(std)
+```
+
+W analizie głównych składowych wartości własne macierzy kowariancji (obliczonej ze standaryzowanego zestawu danych) określają wielkość zmienności zachowanej przez każdy główny składnik. Największe wartości własne odpowiadają kierunkom największej wariancji w zbiorze danych. \
+
+Wykres współczynników wariancji wyjaśnionej: (Czarna łamana z wartościami na lewej osi - pojedyncza wariancja wyjaśniona, Niebieska łamana z wartościami na prawej osi - łączna wariancja wyjaśniona)
+```{r cum sum}
+pv <- pc$sdev^2
+pvp <- pv / sum(pv)
+
+foo <- data.frame(x = seq_along(pvp), y = cumsum(pvp) * 100 / 4)
+p <- fviz_eig(pc, addlabels = TRUE, ylim = c(0, 15), ncp = 100)
+
+p <- p +
+  geom_point(data = foo[1:100,], aes(x, y), size = 2, color = "#00AFBB") +
+  geom_line(data = foo[1:100,], aes(x, y), color = "#00AFBB") +
+  scale_y_continuous(sec.axis = sec_axis(~. * 4,
+                                         name = "Cumulative proportion of Variance Explained"))
+print(p)
+```
+
+100 składowych głównych pozwala tłumaczyć około 60% wariancji dla tego zestawu danych. \
+Jakość reprezentacji zmiennych **cos2** (square cosine, squared coordinates):  (duża wartość cos2 wskazuje na dobrą reprezentację zmiennej, dla danej zmiennej suma cos2 na wszystkich składowych głównych jest równa 1)
+```{r names of cols}
+repr <- fviz_cos2(pc, choice = "var", axes = 1:100, top = 500)
+cos2summ <- repr$data
+cos2summ <- cos2summ[order(-cos2summ$cos2),] #sort by cos2 descending
+names_of_new_data_train <- cos2summ[1:500, "name"]
+fviz_cos2(pc, choice = "var", axes = 1:100, top = 100)
+```
+
+"Nowy" zbiór danych - 500 zmiennych niezależnych:
+```{r new.data.train}
+new.data.train <- data.train[, names_of_new_data_train]
+```
+
+
+## Wykres
+Macierz korelacji:
+```{r Korelacja}
+cormat <- cor(new.data.train)
+```
+Wykres rozkładu policzonych korelacji:
+```{r Współliniowość i wykres}
+fig <- ggplot() + geom_violin(aes(cormat, cormat))
+fig
+```
+
+
+# Model elastic net
+**Zadanie 2** \
+Poczytaj w podręczniku (Elements of Statistical Learning
+https://web.stanford.edu/~hastie/Papers/ESLII.pdf ) na temat modelu elastic net (łącznie z
+Sekcją 18.4). Opisz jak działa ta metoda w oparciu o wprowadzone na wykładzie metody
+regresji grzbietowej i lasso. Podaj jakie ma parametry, które parametry są estymowane, a które
+tuningowe, i jaką funkcję ta metoda optymalizuje. \
+
+Elastic net to metoda regularyzacji estymacji współczynników, która łączy kary ściągające (shrinkage penalty) z metody regresji grzbietowej (ridge regression) i LASSO (least absolute shrinkage and selection operator). \
+Regresja grzbietowa minimalizuje $\sum_{i=1}^{n} (y_i -\beta_0 - \sum_{j=1}^{p}\beta_j x_{ij})^2 +\lambda \sum_{j=1}^{p} \beta_j^2= RSS +\lambda \sum_{j=1}^{p} ||\beta_j||_{2}^{2}$, gdzie $\lambda$ jest parametrem sterującym metody jak silnie współczynniki są ściągane do 0, $||.||_{2}$ jest normą $\mathcal{l}_2$, a $\beta$ to parametr estymowany. \
+Regularyzacja $\mathcal{l}_2$ stanowi jeden ze sposobów zmniejszania kompleksowości modelu, poprzez karanie dużych, pojedynczych wag. \
+Metoda Lasso polega na minimalizacji $\sum_{i=1}^{n} (y_i -\beta_0 - \sum_{j=1}^{p}\beta_j x_{ij})^2 +\lambda \sum_{j=1}^{p} |\beta_j|= RSS +\lambda ||\beta||_{1}$, gdzie $\lambda$ to paremetr sterujący, $\beta$ to parametr estymowany, a $||.||_{1}$ jest normą $\mathcal{l}_1$. \
+Podstawowa różnica między lasso a regresją grzbietową polega na tym, że dla dostatecznie dużych wartości $\lambda$ estymacje niektórych parametrów $\beta_j$ przyjmują wartości równe 0, jednocześnie zadając **selekcję predyktorów**, co nigdy nie ma miejsca w regresji grzbietowej. \
+Regularyzacja $\mathcal{l}_1$ bywa przydatna w przypadku zestawów danych o dużej liczbie cech - większość wag będzie równe 0. \
+Kara Elastic net: $P_{\alpha}(\beta)=\sum_{j=1}^{p}(\frac{1-\alpha}{2}\beta_j^2+\alpha|\beta_j|)$. \
+Elastic net minimalizuje funkcje: $\frac{1}{2n}\sum_{i=1}^{n}(y_i-\beta_0-\sum_{j=1}^{p}\beta_j x_{ij})^2+\lambda P_{\alpha}(\beta)$, gdzie $\beta$ to parametry estymowane, $\alpha \in [0, 1]$ i $\lambda$ to parametry sterujące (tuningowe). \
+
+# Wybór najlepszych predyktorów
+**Zadanie 3** \
+Opisz swój pomysł na sposób dokonania wyboru modelu (zbioru najlepszych predyktorów) w
+metodach: elastic net oraz random forest. Pomysł może być autorski lub znaleziony w
+podręcznikach lub artykułach naukowych. W tym drugim przypadku podaj źródła. \
+
+## Rzadkie wektory cech w modelu Elastic net
+
+Regularyzacja $\mathcal{l}_2$ w regresji grzbietowej dodaje do funkcji kosztu człon kary skutecznie ograniczający występowanie skrajnie dużych wartości wag. Regularyzacja $\mathcal{l}_1$ generuje zazwyczaj rzadkie wektory cech (czyli takich które mają więcej wartości zerowych niż niezerowych), a większość wag będzie równa 0. Zbiór danych cancer.RData to wielowymiarowy zestaw danych (prawdopodobnie o dużej liczbie nieważnych cech) - rzadkość będzie tu przydatna do wyboru istotnych zmiennych spośród >17 000 cech.
+
+## Ocenianie istotności cech za pomocą lasu losowego
+
+Las losowy to zespół drzew decyzyjnych. Koncepcja kryjąca się za losowym lasem polega na uśrednianiu wielu (wysokich) drzew decyzyjnych, które osobno cechują się znaczną wariancją, i łączeniu ich w jeden skuteczniejszy model mający większą wydajność uogólniania oraz wykazujący niższą wrażliwość na przetrenowanie. Za pomocą lasu losowego jesteśmy w stanie mierzyć istotność cechy jako uśredniony spadek zanieczyszczeń (impurity) obliczony dla wszystkich drzew w lesie bez konieczności definiowania założeń, czy są liniowo rozdzielne lub nie. Węzły z największym spadkiem zanieczyszczeń umieszcza się na starcie drzew, podczas gdy węzły z najmniejszym spadkiem są na końcu drzew. Przycinając drzewa poniżej określonego węzła możemy stworzyć zbiór najważniejszych cech.
+
+**Źródła**: -Trevor Hastie, Robert Tibshirani, Jerome Friedman The Elements of Statistical Learning, Springer \
+-Sebastian Raschka , Vahid Mirjalili Python Machine Learning, Packt \
+-Artykuł https://www.cs.cmu.edu/~qyj/papersA08/11-rfbook.pdf \
+
+# Budowanie modelu
+
+**Zadanie 4** \
+Zbuduj modele: elastic net (z paczki glmnet) oraz random forest. Zastosuj walidację krzyżową,
+aby \
+● dobrać parametry tuningowe, \
+● wyestymować błąd testowy dla swoich modeli. \
+Zrób podsumowanie tabelaryczne wyników, jakie otrzymywały metody w walidacji krzyżowej. \
+Określ, który model wydaje Ci się najlepszy i dlaczego. \
+
+## Elastic net
+
+**Parametry modelu**: \
+Parametr $\alpha \in [0, 1]$ określa wagę dla każej z kar $\mathcal{l}_1$ ($\alpha$) i $\mathcal{l}_2$ ($1-\alpha$). \
+Drugi parametr $\lambda$ kontroluje wagę sumy obu kar do funkcji straty. Domyślna wartość 1.0 - w pełni ważona kara; wartość 0 - brak kary. \
+
+**10-krotny sprawdzian krzyżowy i tuning hiperparametrów dla modelu elastic net**:
+Losowo rozdzielamy zestaw danych uczących na 10 podzbiorów, gdzie 9 podzbiorów jest wykorzystywanych do uczenia modelu, a tylko jeden do oceny jego skuteczności. Proces powtarzamy 10-krotnie otrzymując 10 modeli i oszacowań jego skuteczności. A to powtarzamy jeszcze dla 100 par parametrów lambda i alpha.
+```{r}
+model <- caret::train(
+  x = as.matrix.data.frame(subset(data.train, select = -Y)), y = data.train$Y, method = "glmnet",
+  trControl = trainControl("cv", number = 10),
+  tuneLength = 10,
+  metric = "RMSE"
+)
+```
+
+**Podsumowanie tabelaryczne strojenia parametrów**:
+```{r}
+
+as.data.frame(model$results)
+```
+
+**Najlepsze parametry**:
+```{r}
+# Best tuning parameter
+model$bestTune
+```
+
+
+**10-krotny sprawdzian krzyżowy dla 10 wartości alpha i 10 wartości lambda**:
+```{r}
+# Coefficient of the final model
+cf <- coef(model$finalModel, model$bestTune$lambda)
+plot(model)
+```
+
+**Model z najlepszym parametrem alpha**: (walidacja krzyżowa dla parametru lambda)
+```{r}
+model3 <- glmnet::cv.glmnet(x = as.matrix.data.frame(subset(data.train, select = -Y)), y = data.train$Y, family = "gaussian", alpha = as.matrix(model$bestTune["alpha"])[1, 1], type.measure = "mse", nfolds = 10)
+```
+
+
+```{r}
+print(model3)
+plot(model3)
+```
+
+Pierwsza i druga przerywana linia reprezentuje zlogarytmizowany parametr lambda z minimalnym MSE i największa wartość lambda w obrębie jednego błędu standardowego.
+
+
+```{r}
+final_model <- glmnet::glmnet(x = as.matrix.data.frame(subset(data.train, select = -Y)), y = data.train$Y, family = "gaussian", alpha = as.matrix(model$bestTune["alpha"])[1, 1])
+```
+
+Lambda z minimalnym MSE - czerwona przerywana linia, największa wartość lambda w obrębie jednego błędu standardowego - niebieska przerywana linia.
+```{r}
+plot(final_model, xvar = "lambda", main = "Elastic net penalty")
+abline(v = log(model3$lambda.min), col = "red", lty = "dashed")
+abline(v = log(model3$lambda.1se), col = "blue", lty = "dashed")
+```
+
+
+```{r}
+final_model1 <- glmnet::glmnet(x = as.matrix.data.frame(subset(data.train, select = -Y)), y = data.train$Y, family = "gaussian", alpha = as.matrix(model$bestTune["alpha"])[1, 1], lambda = model3$lambda.min)
+final_model2 <- glmnet::glmnet(x = as.matrix.data.frame(subset(data.train, select = -Y)), y = data.train$Y, family = "gaussian", alpha = as.matrix(model$bestTune["alpha"])[1, 1], lambda = model3$lambda.1se)
+
+```
+
+
+**Cechy z niezerowymi współczynnikami**:
+```{r}
+vip(final_model1, num_features = sum(coef(final_model1) != 0), geom = "point")
+vip(final_model2, num_features = sum(coef(final_model2) != 0), geom = "point")
+```
+
+
+**Liczba niezerowych współczynników**: (z ponad 17 000)
+```{r}
+sprintf("Lambda.min: %d , Lambda.1se: %d", sum(coef(final_model1) != 0), sum(coef(final_model2) != 0))
+```
+
+```{r}
+finglmnet <- glmnet::glmnet(x = as.matrix.data.frame(subset(data.train, select = -Y)), y = data.train$Y, family = "gaussian", alpha = as.matrix(model$bestTune["alpha"])[1, 1], lambda = model3$lambda.min)
+```
+
+## Random Forest
+**Parametery modelu**: \
+**ntree** - liczba drzew w lesie \
+**mtry** - liczba zmiennych do losowej próby w każdym podziale \
+**sampsize** - liczba prób losowych do treningu \
+**nodesize** - minimalna liczba prób w węzłach końcowych. Większa wartość pozwala na głębsze, bardziej złożone drzewa, mniejsza natomiast skutkuje płytszymi drzewami \
+**maxnodes** - maksymalna liczba końcowych węzłów \
+
+W tym przypadku zajmiemy się tuningiem parametrów: ntree i mtry.
+
+```{r}
+forest_model <- randomForest(data.train[colnames(data.train) != "Y"], data.train$Y, importance = TRUE, mtry = 4, ntree = 400)
+```
+
+
+
+```{r}
+plot(forest_model)
+```
+
+
+Wykres wypłaszcza się mniej więcej od 200 drzew.
+
+```{r}
+forest_model <- randomForest(data.train[colnames(data.train) != "Y"], data.train$Y, importance = TRUE, mtry = floor(sqrt(ncol(data.train[colnames(data.train) != "Y"]))), ntree = 200)
+```
+
+
+**Tuning mtry**:
+```{r}
+cl <- makePSOCKcluster(4)
+
+registerDoParallel(cl)
+
+
+start.time <- proc.time()
+RFmodel <- tuneRF(
+  x = as.matrix.data.frame(subset(data.train, select = -Y)), y = data.train$Y, mtryStart = floor((ncol(data.train) - 1) / 3), ntreeTry = 200, improve = 0.05, plot = TRUE, trace = TRUE
+)
+print(RFmodel)
+stop.time <- proc.time()
+
+run.time <- stop.time - start.time
+print(run.time)
+```
+
+
+## Podsumowanie i wybór modelu
+```{r}
+cl <- makePSOCKcluster(4)
+
+registerDoParallel(cl)
+
+data.train <- data.train[sample(nrow(data.train)),]
+start.time <- proc.time()
+
+folds <- cut(seq(1, nrow(data.train)), breaks = 10, labels = FALSE)
+rf.cv <- vector()
+info.cv <- vector()
+#10 fold cross validation
+for (i in 1:10) {
+  testIndexes <- which(folds == i, arr.ind = TRUE)
+  testData <- data.train[testIndexes,]
+  trainData <- data.train[-testIndexes,]
+
+  rf.cv <- randomForest(trainData[colnames(trainData) != "Y"], trainData$Y, importance = TRUE, mtry = RFmodel[RFmodel[, 2] == min(RFmodel[, 2]), 1], ntree = 200, replace = TRUE)
+  info.cv[i] <- MSE(predict(rf.cv, testData[colnames(testData) != "Y"]), testData$Y)
+}
+cv <- data.frame("i" = 1:10, "mse" = info.cv)
+stop.time <- proc.time()
+
+run.time <- stop.time - start.time
+print(run.time)
+```
+
+
+```{r}
+registerDoParallel(cl)
+
+start.time <- proc.time()
+
+folds <- cut(seq(1, nrow(data.train)), breaks = 10, labels = FALSE)
+
+info.cv.glmin <- vector()
+#10 fold cross validation
+for (i in 1:10) {
+  testIndexes <- which(folds == i, arr.ind = TRUE)
+  testData <- data.train[testIndexes,]
+  trainData <- data.train[-testIndexes,]
+  gl.cv1 <- glmnet::cv.glmnet(x = as.matrix.data.frame(subset(trainData, select = -Y)), y = trainData$Y, family = "gaussian", alpha = 1)
+  lambdamin <- gl.cv1$lambda.min
+  gl.cv1 <- glmnet::glmnet(x = as.matrix.data.frame(subset(trainData, select = -Y)), y = trainData$Y, family = "gaussian", alpha = 1, lambda = lambdamin)
+  info.cv.glmin[i] <- MSE(predict(gl.cv1, newx = data.matrix(testData[colnames(testData) != "Y"]),s = lambdamin), as.vector(testData[,"Y"]))
+}
+gl.cv.min <- data.frame("i" = 1:10, "mse" = info.cv.glmin)
+stop.time <- proc.time()
+
+run.time <- stop.time - start.time
+print(run.time)
+```
+
+**Elastic net**:
+```{r}
+as.data.frame(gl.cv.min)
+mean(gl.cv.min[, "mse"])
+```
+**Random forest**:
+```{r}
+as.data.frame(cv)
+mean(cv[, "mse"])
+```
+
+
+Lepiej radzi sobie model Elastic net.
+
+# Predykcja dla danych testowych
+
+**Zadanie 5** (Przygotowanie predykcji dla danych testowych) \
+Naucz wybrany model na całych danych treningowych, dla zbioru cancer.RData. Zastosuj
+nauczony model do danych testowych i przewidź zmienną objaśnianą dla tych danych.
+
+```{r Preds}
+bestmodel <- gl.cv1
+preds <- predict(bestmodel, newx = data.matrix(data.test[colnames(data.test) != "Y"]),s = lambdamin)
+save(preds, file = "keczkowska.RData")
+```
+
